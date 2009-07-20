@@ -8,4 +8,4 @@ compile:
 
 clean:
 	rm -rf ebin erl_crash.dump
-	find . -name "*~" -exec rm -rf {} \;
+	find . -name "*~" -delete
