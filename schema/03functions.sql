@@ -3,17 +3,17 @@ DECLARE
     result RECORD;
 BEGIN
     FOR result IN
-        SELECT t0.password, t0.ip_addr, t2.vendor_id, t2.attr_id, t2.name, t1.value FROM accounts t0
+        SELECT t0.password, t0.ip_addr, t2.name, t1.value FROM accounts t0
             -- Retrieve all personal RADIUS attributes
             LEFT OUTER JOIN assigned_radius_replies t1
-                ON ((t1.account_id = t0.id AND t1.attached_type = 'Account') OR
+                ON ((t1.attachee_id = t0.id AND t1.attachee_type = 'Account') OR
                 -- Retrieve all personal RADIUS attributes from assigned groups
-                (t1.account_id IN
-                    (SELECT t0.radius_reply_group_id FROM assigned_radius_reply_groups t0
-                        JOIN accounts t1 ON t1.id = t0.account_id)
-                            AND t1.attached_type = 'RadiusReplyGroup') OR
-                -- Retrieve all tariff related RADIUS attributes
-                (t1.account_id = t0.tariff_id AND t1.attached_type = 'Tariff'))
+                --(t1.account_id IN
+                --    (SELECT t0.radius_reply_group_id FROM assigned_radius_reply_groups t0
+                --        JOIN accounts t1 ON t1.id = t0.account_id)
+                ---            AND t1.attached_type = 'RadiusReplyGroup') OR
+              -- Retrieve all tariff related RADIUS attributes
+                (t1.attachee_id = t0.tariff_id AND t1.attachee_type = 'Tariff'))
             LEFT OUTER JOIN radius_attributes t2 on t2.id = t1.radius_attribute_id
         WHERE t0.login ILIKE $1 AND t0.tariff_id IS NOT NULL AND t0.active = TRUE
     LOOP
@@ -34,15 +34,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION stop_session(VARCHAR, BIGINT, BIGINT, VARCHAR, INTEGER, TIMESTAMP) RETURNS INTEGER AS $$
+CREATE OR REPLACE FUNCTION stop_session(VARCHAR, TIMESTAMP) RETURNS INTEGER AS $$
 DECLARE
     result INTEGER;
 BEGIN
-    UPDATE sessions SET octets_in = $2, octets_out = $3, finished_at = $6 WHERE sid = $1 AND finished_at IS NULL;
-    UPDATE accounts SET balance = $4::FLOAT WHERE id = $5;
-    UPDATE accounts SET active = 'false', inactive_reason = 'Negative balance' WHERE id = $5 and $4::FLOAT <= 0;
+    UPDATE sessions SET finished_at = $2 WHERE sid = $1 AND finished_at IS NULL;
     GET DIAGNOSTICS result = ROW_COUNT;
     RETURN result;
 END;
-$$ LANGUAGE plpgsql;
-
+$$ LANGUAGE plpgsql; 

@@ -51,8 +51,6 @@ CREATE TABLE sessions(
     sid VARCHAR(128) NOT NULL,
     account_id INTEGER NOT NULL,
     ip_addr INET NOT NULL,
-    octets_in BIGINT DEFAULT 0,
-    octets_out BIGINT DEFAULT 0,
     started_at TIMESTAMP WITHOUT TIME ZONE,
     finished_at TIMESTAMP WITHOUT TIME ZONE
 );
@@ -61,8 +59,6 @@ CREATE SEQUENCE radius_attributes_id_seq START 1;
 
 CREATE TABLE radius_attributes(
     id INTEGER NOT NULL DEFAULT NEXTVAL('radius_attributes_id_seq'::text),
-    vendor_id INTEGER,
-    attr_id INTEGER NOT NULL,
     name VARCHAR(64) NOT NULL,
     created_at TIMESTAMP WITHOUT TIME ZONE,
     updated_at TIMESTAMP WITHOUT TIME ZONE
@@ -72,30 +68,30 @@ CREATE SEQUENCE assigned_radius_replies_id_seq START 1;
 
 CREATE TABLE assigned_radius_replies(
     id INTEGER NOT NULL DEFAULT NEXTVAL('assigned_radius_replies_id_seq'::text),
-    account_id INTEGER NOT NULL,
-    attached_type VARCHAR NOT NULL,
+    attachee_id INTEGER NOT NULL,
+    attachee_type VARCHAR NOT NULL,
     radius_attribute_id INTEGER NOT NULL,
     value VARCHAR(128) NOT NULL,
     created_at TIMESTAMP WITHOUT TIME ZONE,
     updated_at TIMESTAMP WITHOUT TIME ZONE
 );
 
-CREATE SEQUENCE assigned_radius_reply_groups_id_seq START 1;
+--CREATE SEQUENCE assigned_radius_reply_groups_id_seq START 1;
 
-CREATE TABLE assigned_radius_reply_groups(
-    id INTEGER NOT NULL DEFAULT NEXTVAL('assigned_radius_reply_groups_id_seq'::text),
-    account_id INTEGER NOT NULL,
-    radius_reply_group_id INTEGER NOT NULL,
-    created_at TIMESTAMP WITHOUT TIME ZONE,
-    updated_at TIMESTAMP WITHOUT TIME ZONE
-);
+--CREATE TABLE assigned_radius_reply_groups(
+--    id INTEGER NOT NULL DEFAULT NEXTVAL('assigned_radius_reply_groups_id_seq'::text),
+--    account_id INTEGER NOT NULL,
+--    radius_reply_group_id INTEGER NOT NULL,
+--    created_at TIMESTAMP WITHOUT TIME ZONE,
+--    updated_at TIMESTAMP WITHOUT TIME ZONE
+--);
 
-CREATE SEQUENCE radius_reply_groups_id_seq START 1;
+--CREATE SEQUENCE radius_reply_groups_id_seq START 1;
 
-CREATE TABLE radius_reply_groups(
-    id INTEGER NOT NULL DEFAULT NEXTVAL('radius_reply_groups_id_seq'::text),
-    name VARCHAR(64) NOT NULL,
-    created_at TIMESTAMP WITHOUT TIME ZONE,
-    updated_at TIMESTAMP WITHOUT TIME ZONE
-);
+--CREATE TABLE radius_reply_groups(
+--    id INTEGER NOT NULL DEFAULT NEXTVAL('radius_reply_groups_id_seq'::text),
+--    name VARCHAR(64) NOT NULL,
+--    created_at TIMESTAMP WITHOUT TIME ZONE,
+--    updated_at TIMESTAMP WITHOUT TIME ZONE
+--);
 
