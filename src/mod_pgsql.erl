@@ -40,7 +40,7 @@ start(Options) ->
     ?INFO_MSG("Starting dynamic module ~p~n", [?MODULE]),
     ChildSpec = {?MODULE,
                  {?MODULE, start_link, [Options]},
-                 permanent,
+                 transient,
                  brutal_kill,
                  worker,
                  [?MODULE]
@@ -52,10 +52,9 @@ start_link(Options) ->
 
 stop() ->
     ?INFO_MSG("Stopping dynamic module ~p~n", [?MODULE]),
-    netspire_hooks:delete(radius_acct_lookup, ?MODULE, lookup_account),
-    netspire_hooks:delete(radius_access_accept, ?MODULE, prepare_session),
-    netspire_hooks:delete(radius_acct_request, ?MODULE, accounting_request),
-    netspire_netflow:delete_packet_handler(?MODULE).
+    gen_server:call(?MODULE, stop),
+    supervisor:terminate_child(netspire_sup, ?MODULE),
+    supervisor:delete_child(netspire_sup, ?MODULE).
 
 lookup_account(_Value, _Request, UserName, _Client) ->
     gen_server:call(?MODULE, {lookup_account, UserName}).
@@ -115,6 +114,7 @@ init([Options]) ->
     end.
 
 handle_call({lookup_account, UserName}, _From, State) ->
+    ?INFO_MSG("Lookup account: ~p~n", [UserName]),
     Query = "SELECT * FROM auth($1)",
     F = fun(List) ->
             [_, _, Name, Value] = List,
@@ -196,7 +196,8 @@ handle_call({accounting_request, _Response, ?INTERIM_UPDATE, Request, _Client}, 
         false -> ok
     end,
     {reply, Reply, State};
-
+handle_call(stop, _From, State) ->
+        {stop, normal, ok, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -294,8 +295,6 @@ handle_cast(_Request, State) ->
     {noreply, State}.
 
 handle_info({'DOWN', _MonitorRef, process, _Pid, _Info}, State) ->
-    ?ERROR_MSG("Connection to database has been dropped~n", []),
-    netspire_hooks:delete(radius_acct_lookup, ?MODULE, lookup_account),
     {stop, connection_dropped, State};
 
 handle_info(check_sessions, State) ->
@@ -318,6 +317,11 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 terminate(_Reason, _State) ->
+    ?INFO_MSG("Terminate~n", []),
+    netspire_hooks:delete(radius_acct_lookup, ?MODULE, lookup_account),
+    netspire_hooks:delete(radius_access_accept, ?MODULE, prepare_session),
+    netspire_hooks:delete(radius_acct_request, ?MODULE, accounting_request),
+    netspire_netflow:delete_packet_handler(?MODULE),
     ok.
 
 time_to_string({{Y, M, D}, {H, M1, S}}) ->
