@@ -148,7 +148,7 @@ handle_call({accounting_request, _Response, ?ACCT_START, Request, _Client}, _Fro
     ExpiresAt = netspire_util:timestamp(),
     Query = "SELECT * FROM start_session($1, $2, $3, $4)",
     Result = pgsql:pquery(State#state.ref, Query,
-        [UserName, SID, ip_to_string(IP), time_to_string(Now)]),
+        [UserName, SID, inet_parse:ntoa(IP), time_to_string(Now)]),
     case Result of
         {ok, _, _, _, Res} ->
             case Res of
@@ -321,7 +321,4 @@ terminate(_Reason, _State) ->
     ok.
 
 time_to_string({{Y, M, D}, {H, M1, S}}) ->
-    io_lib:format("~p-~p-~p ~p:~p:~p", [Y, M, D, H, M1, S]). 
-
-ip_to_string({A, B, C, D}) ->
-    io_lib:format("~p.~p.~p.~p", [A, B, C, D]). 
+    io_lib:format("~p-~p-~p ~p:~p:~p", [Y, M, D, H, M1, S]).
