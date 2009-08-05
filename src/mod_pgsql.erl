@@ -34,7 +34,6 @@
 -define(SESSION_SYNC_INTERVAL, 100 * 1000).
 
 -record(data, {tariff, balance, octets_in, octets_out}).
--record(session, {id, ip, username, status, started_at, expires_at, finished_at, data}).
 
 start(Options) ->
     ?INFO_MSG("Starting dynamic module ~p~n", [?MODULE]),
@@ -140,12 +139,13 @@ handle_call({lookup_account, UserName}, _From, State) ->
             {reply, {stop, undefined}, State}
     end;
 
-handle_call({accounting_request, _Response, ?ACCT_START, Request, _Client}, _From, State) ->
+handle_call({accounting_request, _Response, ?ACCT_START, Request, Client}, _From, State) ->
     UserName = radius:attribute_value(?USER_NAME, Request),
     SID = radius:attribute_value(?ACCT_SESSION_ID, Request),
     IP = radius:attribute_value(?FRAMED_IP_ADDRESS, Request),
     Now = calendar:now_to_local_time(now()),
     ExpiresAt = netspire_util:timestamp(),
+    NasSpec = {Client#nas_spec.ip, Client#nas_spec.secret},
     Query = "SELECT * FROM start_session($1, $2, $3, $4)",
     Result = pgsql:pquery(State#state.ref, Query,
         [UserName, SID, inet_parse:ntoa(IP), time_to_string(Now)]),
@@ -160,7 +160,7 @@ handle_call({accounting_request, _Response, ?ACCT_START, Request, _Client}, _Fro
                                          balance = Balance,
                                          octets_in = 0,
                                          octets_out = 0},
-                            S#session{data = Data}
+                            S#session{nas_spec = NasSpec, data = Data}
 
                     end,
                     radius_sessions:start(UserName, SID, ExpiresAt + ?TIMEOUT, F)
