@@ -144,7 +144,7 @@ handle_call({accounting_request, _Response, ?ACCT_START, Request, _Client}, _Fro
     UserName = radius:attribute_value(?USER_NAME, Request),
     SID = radius:attribute_value(?ACCT_SESSION_ID, Request),
     IP = radius:attribute_value(?FRAMED_IP_ADDRESS, Request),
-    Now = Now = calendar:now_to_local_time(now()),
+    Now = calendar:now_to_local_time(now()),
     ExpiresAt = netspire_util:timestamp(),
     Query = "SELECT * FROM start_session($1, $2, $3, $4)",
     Result = pgsql:pquery(State#state.ref, Query,
