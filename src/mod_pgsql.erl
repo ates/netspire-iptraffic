@@ -28,8 +28,8 @@
 
 -define(TIMEOUT, 50).
 %% Acct-Status-Type attribute values
--define(ACCOUNTING_ON, 1).
--define(ACCOUNTING_OFF, 2).
+-define(ACCT_START, 1).
+-define(ACCT_STOP, 2).
 -define(INTERIM_UPDATE, 3).
 -define(SESSION_SYNC_INTERVAL, 100 * 1000).
 
@@ -140,7 +140,7 @@ handle_call({lookup_account, UserName}, _From, State) ->
             {reply, {stop, undefined}, State}
     end;
 
-handle_call({accounting_request, _Response, ?ACCOUNTING_ON, Request, _Client}, _From, State) ->
+handle_call({accounting_request, _Response, ?ACCT_START, Request, _Client}, _From, State) ->
     UserName = radius:attribute_value(?USER_NAME, Request),
     SID = radius:attribute_value(?ACCT_SESSION_ID, Request),
     IP = radius:attribute_value(?FRAMED_IP_ADDRESS, Request),
@@ -169,7 +169,7 @@ handle_call({accounting_request, _Response, ?ACCOUNTING_ON, Request, _Client}, _
     Reply = #radius_packet{code = ?ACCT_RESPONSE},
     {reply, Reply, State};
 
-handle_call({accounting_request, _Response, ?ACCOUNTING_OFF, Request, _Client}, _From, State) ->
+handle_call({accounting_request, _Response, ?ACCT_STOP, Request, _Client}, _From, State) ->
     SID = radius:attribute_value(?ACCT_SESSION_ID, Request),
     FinishedAt = netspire_util:timestamp(),
     Reply = #radius_packet{code = ?ACCT_RESPONSE},
