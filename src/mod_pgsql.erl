@@ -316,7 +316,6 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 terminate(_Reason, _State) ->
-    ?INFO_MSG("Terminate~n", []),
     netspire_hooks:delete(radius_acct_lookup, ?MODULE, lookup_account),
     netspire_hooks:delete(radius_access_accept, ?MODULE, prepare_session),
     netspire_hooks:delete(radius_acct_request, ?MODULE, accounting_request),
