@@ -66,7 +66,7 @@ BEGIN
     SELECT id INTO _sid_id FROM radius_sessions WHERE sid = $1;
     SELECT account_id INTO _acct_id FROM radius_sessions WHERE sid = $1;
     UPDATE accounts SET balance = balance - $4::FLOAT WHERE id = _acct_id;
-    UPDATE radius_sessions SET updated_at = LOCALTIMESTAMP;
+    UPDATE radius_sessions SET updated_at = LOCALTIMESTAMP WHERE id = _sid_id;
     LOOP 
         UPDATE netflow_session_data SET octets_in = $2, octets_out = $3, updated_at = LOCALTIMESTAMP WHERE sid_id = _sid_id;
         IF found THEN
