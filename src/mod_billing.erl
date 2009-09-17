@@ -30,7 +30,7 @@
 -define(SESSION_TIMEOUT, 120000).
 -define(SESSION_SYNC_INTERVAL, 60000).
  
--record(data, {tariff, balance = 0, octets_in = 0, octets_out = 0}).
+-record(data, {tariff, balance = 0, amount = 0, octets_in = 0, octets_out = 0}).
  
 start(Options) ->
     ?INFO_MSG("Starting dynamic module ~p~n", [?MODULE]),
@@ -70,10 +70,7 @@ prepare_session(Response, Request, {Balance, Plan}, _Client) ->
     case radius_sessions:is_exist(UserName) of
         false ->
             Timeout = gen_module:get_option(?MODULE, session_timeout, ?SESSION_TIMEOUT),
-            Data = #data{tariff = Plan,
-                         balance = Balance,
-                         octets_in = 0,
-                         octets_out = 0},
+            Data = #data{tariff = Plan, balance = Balance},
             radius_sessions:prepare(UserName, IP, Timeout, Data),
             Response;
         true ->
@@ -176,15 +173,13 @@ handle_netflow_records({SrcIP, DstIP, Octets}) ->
 update_session_data(Session, Octets, Direction, Amount) ->
     Fun = fun(S) ->
         Data = S#session.data,
-        Balance = Data#data.balance,
         NewIn = Data#data.octets_in + Octets,
         NewOut = Data#data.octets_out + Octets,
-        NewBalance = Balance - Amount,
         NewData = case Direction of
             in ->
-                Data#data{balance = NewBalance, octets_in = NewIn};
+                Data#data{amount = Amount, octets_in = NewIn};
             out ->
-                Data#data{balance = NewBalance, octets_out = NewOut}
+                Data#data{amount = Amount, octets_out = NewOut}
         end,
         S#session{data = NewData}
     end,
@@ -227,8 +222,8 @@ handle_cast({sync_session, SID}, State) ->
     case S#session.status of
         new -> ok;
         _ ->
-            {data, _, Balance, In, Out} = S#session.data,
-            netspire_hooks:run(backend_sync_session, [SID, In, Out, float_to_list(Balance)]),
+            {data, _, _, Amount, In, Out} = S#session.data,
+            netspire_hooks:run(backend_sync_session, [SID, In, Out, float_to_list(Amount)]),
             ?INFO_MSG("Netflow session data was synced for ~s~n", [SID])
     end,
     {noreply, State};
