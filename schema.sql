@@ -24,20 +24,13 @@ DECLARE
     result RECORD;
 BEGIN
     FOR result IN
-        SELECT t0.password, t0.balance::FLOAT, t3.code, t2.name, t1.value FROM accounts t0
+        SELECT t0.password, t0.balance::FLOAT, t1.code, t3.name, t2.value FROM accounts t0
+            LEFT OUTER JOIN plans t1 ON (t0.plan_id = t1.id)
             -- Retrieve all personal RADIUS attributes
-            LEFT OUTER JOIN plans t3 ON (t0.plan_id = t3.id)
-            LEFT OUTER JOIN assigned_radius_replies t1
-                ON ((t1.target_id = t0.id AND t1.target_type = 'Account') OR
-                -- Retrieve all personal RADIUS attributes from assigned groups
-                --(t1.account_id IN
-                --    (SELECT t0.radius_reply_group_id FROM assigned_radius_reply_groups t0
-                --        JOIN accounts t1 ON t1.id = t0.account_id)
-                ---            AND t1.attached_type = 'RadiusReplyGroup') OR
-              -- Retrieve all tariff related RADIUS attributes
-                (t1.target_id = t0.plan_id AND t1.target_type = 'Tariff'))
-            LEFT OUTER JOIN radius_replies t2 on t2.id = t1.radius_reply_id
-        WHERE t0.login ILIKE $1 AND t0.plan_id IS NOT NULL AND t0.active = TRUE
+            LEFT OUTER JOIN assigned_radius_replies t2
+                ON (t2.target_id = t0.id AND t2.target_type = 'Account')
+            LEFT OUTER JOIN radius_replies t3 on t3.id = t2.radius_reply_id
+        WHERE t0.login ILIKE $1 AND t0.balance IS NOT NULL AND t0.plan_id IS NOT NULL AND t0.active = TRUE
     LOOP
         RETURN NEXT result;
     END LOOP;
