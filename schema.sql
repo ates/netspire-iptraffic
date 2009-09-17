@@ -52,7 +52,7 @@ CREATE OR REPLACE FUNCTION stop_session(VARCHAR, VARCHAR, TIMESTAMP) RETURNS INT
 DECLARE
     result INTEGER;
 BEGIN
-    UPDATE radius_sessions SET finished_at = $3 WHERE sid = $2 AND finished_at IS NULL AND account_id = (SELECT id FROM accounts WHERE login ILIKE $1);
+    UPDATE radius_sessions SET finished_at = $3, updated_at = $3 WHERE sid = $2 AND finished_at IS NULL AND account_id = (SELECT id FROM accounts WHERE login ILIKE $1);
     GET DIAGNOSTICS result = ROW_COUNT;
     RETURN result;
 END;
@@ -66,6 +66,7 @@ BEGIN
     SELECT id INTO _sid_id FROM radius_sessions WHERE sid = $1;
     SELECT account_id INTO _acct_id FROM radius_sessions WHERE sid = $1;
     UPDATE accounts SET balance = balance - $4::FLOAT WHERE id = _acct_id;
+    UPDATE radius_sessions SET updated_at = LOCALTIMESTAMP;
     LOOP 
         UPDATE netflow_session_data SET octets_in = $2, octets_out = $3, updated_at = LOCALTIMESTAMP WHERE sid_id = _sid_id;
         IF found THEN
