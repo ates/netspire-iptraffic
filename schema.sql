@@ -67,12 +67,12 @@ BEGIN
     SELECT account_id INTO _acct_id FROM radius_sessions WHERE sid = $1;
     UPDATE accounts SET balance = balance - $4::FLOAT WHERE id = _acct_id;
     LOOP 
-        UPDATE netflow_session_data SET octets_in = $2, octets_out = $3 WHERE sid_id = _sid_id;
+        UPDATE netflow_session_data SET octets_in = $2, octets_out = $3, updated_at = LOCALTIMESTAMP WHERE sid_id = _sid_id;
         IF found THEN
             RETURN 1;
         END IF;
         BEGIN
-            INSERT INTO netflow_session_data(sid_id, octets_in, octets_out) VALUES(_sid_id, $2, $3);
+            INSERT INTO netflow_session_data(sid_id, octets_in, octets_out, created_at, updated_at) VALUES(_sid_id, $2, $3, LOCALTIMESTAMP, LOCALTIMESTAMP);
             RETURN 0;
         END;
     END LOOP;
