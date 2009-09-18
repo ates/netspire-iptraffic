@@ -15,6 +15,7 @@ CREATE TABLE netflow_session_data(
     sid_id INTEGER NOT NULL,
     octets_in BIGINT DEFAULT 0,
     octets_out BIGINT DEFAULT 0,
+    amount NUMERIC(20, 10) DEFAULT 0,
     created_at TIMESTAMP WITHOUT TIME ZONE,
     updated_at TIMESTAMP WITHOUT TIME ZONE
 );
@@ -68,12 +69,12 @@ BEGIN
     UPDATE accounts SET balance = balance - $4::FLOAT WHERE id = _acct_id;
     UPDATE radius_sessions SET updated_at = LOCALTIMESTAMP WHERE id = _sid_id;
     LOOP 
-        UPDATE netflow_session_data SET octets_in = $2, octets_out = $3, updated_at = LOCALTIMESTAMP WHERE sid_id = _sid_id;
+        UPDATE netflow_session_data SET octets_in = $2, octets_out = $3, updated_at = LOCALTIMESTAMP, amount = $4::FLOAT WHERE sid_id = _sid_id;
         IF found THEN
             RETURN 1;
         END IF;
         BEGIN
-            INSERT INTO netflow_session_data(sid_id, octets_in, octets_out, created_at, updated_at) VALUES(_sid_id, $2, $3, LOCALTIMESTAMP, LOCALTIMESTAMP);
+            INSERT INTO netflow_session_data(sid_id, octets_in, octets_out, amount, created_at, updated_at) VALUES(_sid_id, $2, $3, $4::FLOAT, LOCALTIMESTAMP, LOCALTIMESTAMP);
             RETURN 0;
         END;
     END LOOP;

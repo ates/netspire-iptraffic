@@ -61,16 +61,23 @@ accounting_request(Response, Type, Request, Client) ->
 handle_packet(SrcIP, Pdu) ->
     gen_server:cast(?MODULE, {netflow, Pdu, SrcIP}).
 
-sync_session(SID) ->
-    gen_server:cast(?MODULE, {sync_session, SID}).
-
 prepare_session(Response, Request, {Balance, Plan}, _Client) ->
     UserName = radius:attribute_value(?USER_NAME, Request),
     IP = radius:attribute_value(?FRAMED_IP_ADDRESS, Response),
     Timeout = gen_module:get_option(?MODULE, session_timeout, ?SESSION_TIMEOUT),
-    Data = #data{tariff = Plan, balance = Balance},
+    Data = #data{tariff = list_to_atom(Plan), balance = Balance},
     radius_sessions:prepare(UserName, IP, Timeout, Data),
     Response.
+
+sync_session(SID) ->
+    [S] = radius_sessions:fetch(SID),
+    case S#session.status of
+        new -> ok;
+        _ ->
+            {data, _, _, Amount, In, Out} = S#session.data,
+            netspire_hooks:run(backend_sync_session, [SID, In, Out, float_to_list(Amount)]),
+            ?INFO_MSG("Netflow session data was synced for ~s~n", [SID])
+    end.
 
 %%
 %% Internal functions
@@ -82,7 +89,6 @@ init([_Options]) ->
     netspire_hooks:add(radius_acct_lookup, ?MODULE, lookup_account),
     netspire_hooks:add(radius_access_accept, ?MODULE, prepare_session, 200),
     netspire_hooks:add(radius_acct_request, ?MODULE, accounting_request),
-    {ok, _} = timer:send_interval(90000, self(), sync_sessions),
     {ok, _} = timer:send_interval(90000, self(), expire_sessions),
     {ok, no_state}.
 
@@ -131,7 +137,6 @@ handle_call({accounting_request, _Response, ?INTERIM_UPDATE, Request, _Client}, 
     Timeout = gen_module:get_option(?MODULE, session_timeout, ?SESSION_TIMEOUT),
     ExpiresAt = netspire_util:timestamp() + Timeout,
     Reply = #radius_packet{code = ?ACCT_RESPONSE},
-    sync_session(SID),
     radius_sessions:interim(SID, ExpiresAt),
     {reply, Reply, State};
 handle_call(stop, _From, State) ->
@@ -165,7 +170,7 @@ handle_netflow_records({SrcIP, DstIP, Octets}) ->
                     update_session_data(Session, Octets, Direction, Amount);
                 {error, Reason} ->
                     SID = Session#session.id,
-                    ?ERROR_MSG("Can not calculate session ~s due ~p~n", [SID, Reason])
+                    ?ERROR_MSG("Cannot calculate session ~s due ~p~n", [SID, Reason])
             end
     end.
 
@@ -174,11 +179,12 @@ update_session_data(Session, Octets, Direction, Amount) ->
         Data = S#session.data,
         NewIn = Data#data.octets_in + Octets,
         NewOut = Data#data.octets_out + Octets,
+        NewAmount = Data#data.amount + Amount,
         NewData = case Direction of
             in ->
-                Data#data{amount = Amount, octets_in = NewIn};
+                Data#data{amount = NewAmount, octets_in = NewIn};
             out ->
-                Data#data{amount = Amount, octets_out = NewOut}
+                Data#data{amount = NewAmount, octets_out = NewOut}
         end,
         S#session{data = NewData}
     end,
@@ -186,14 +192,16 @@ update_session_data(Session, Octets, Direction, Amount) ->
 
 apply_tariff_plan(Session, Direction, Octets) ->
     Data = Session#session.data,
-    Tariff = list_to_atom(Data#data.tariff),
-    Opts = [Data#data.balance, Direction, Octets],
-    try
-        erlang:apply(Tariff, calculate, Opts)
+    Tariff = Data#data.tariff,
+    Balance = Data#data.balance,
+    Amount = try
+        erlang:apply(Tariff, calculate, [Direction, Octets])
     catch
         _:Reason ->
             ?ERROR_MSG("An error caused while trying starting tariff ~p: ~p~n", [Tariff, Reason])
-    end.
+    end,
+    NewBalance = Balance - (Data#data.amount + Amount),
+    {ok, NewBalance, Amount}.
 
 fetch_matching_session(SrcIP, DstIP) ->
     F = fun() ->
@@ -216,16 +224,6 @@ handle_cast({netflow, Pdu, _SrcIP}, State) ->
     Result = extract_netflow_fields(Pdu),
     handle_netflow_records(Result),
     {noreply, State};
-handle_cast({sync_session, SID}, State) ->
-    [S] = radius_sessions:fetch(SID),
-    case S#session.status of
-        new -> ok;
-        _ ->
-            {data, _, _, Amount, In, Out} = S#session.data,
-            netspire_hooks:run(backend_sync_session, [SID, In, Out, float_to_list(Amount)]),
-            ?INFO_MSG("Netflow session data was synced for ~s~n", [SID])
-    end,
-    {noreply, State};
 handle_cast(_Request, State) ->
     {noreply, State}.
 
@@ -233,7 +231,9 @@ handle_info(expire_sessions, State) ->
     case radius_sessions:expire() of
         {ok, []} -> ok;
         {ok, Result} ->
-            lists:foreach(fun(S) -> radius_sessions:purge(S) end, Result)
+            lists:foreach(fun(S) ->
+                        sync_session(S#session.id),
+                        radius_sessions:purge(S) end, Result)
     end,
     {noreply, State};
 handle_info(_Request, State) ->
