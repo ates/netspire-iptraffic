@@ -30,7 +30,7 @@ BEGIN
             LEFT OUTER JOIN assigned_radius_replies t2
                 ON (t2.target_id = t0.id AND t2.target_type = 'Account')
             LEFT OUTER JOIN radius_replies t3 on t3.id = t2.radius_reply_id
-        WHERE t0.login ILIKE $1 AND t0.balance IS NOT NULL AND t0.plan_id IS NOT NULL AND t0.active = TRUE
+        WHERE t0.login ILIKE $1 AND (t0.balance IS NOT NULL AND t0.balance > 0) AND t0.plan_id IS NOT NULL AND t0.active = TRUE
     LOOP
         RETURN NEXT result;
     END LOOP;
