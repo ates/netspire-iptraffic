@@ -128,7 +128,7 @@ handle_call({accounting_request, _Response, ?ACCT_STOP, Request, _Client}, _From
         true ->
             sync_session(SID),
             radius_sessions:stop(SID, FinishedAt),
-            netspire_hooks:run_fold(backend_stop_session, undefined, [UserName, SID, time_to_string(Now), 0]);
+            netspire_hooks:run(backend_stop_session, [UserName, SID, time_to_string(Now), true]);
         false -> ok
     end,
     {reply, Reply, State};
@@ -236,7 +236,7 @@ handle_info(expire_sessions, State) ->
                         UserName = S#session.username,
                         Now = calendar:now_to_local_time(now()),
                         sync_session(SID),
-                        netspire_hooks:run_fold(backend_stop_session, undefined, [UserName, SID, time_to_string(Now), 1]),
+                        netspire_hooks:run(backend_stop_session, [UserName, SID, time_to_string(Now), false]),
                         radius_sessions:purge(S) end, Result)
     end,
     {noreply, State};

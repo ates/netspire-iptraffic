@@ -6,7 +6,7 @@
 -export([start_link/1,
          fetch_account/2,
          start_session/3,
-         stop_session/5,
+         stop_session/4,
          sync_session_data/4]).
 
 %% gen_module callbacks
@@ -40,7 +40,7 @@ fetch_account(_, Username) ->
 start_session(UserName, StartedAt, ExpiredAt) ->
     gen_server:call(?MODULE, {start_session, UserName, StartedAt, ExpiredAt}).
 
-stop_session(_, UserName, SID, FinishedAt, Expired) ->
+stop_session(UserName, SID, FinishedAt, Expired) ->
     gen_server:call(?MODULE, {stop_session, UserName, SID, FinishedAt, Expired}).
 
 sync_session_data(SID, In, Out, Balance) ->

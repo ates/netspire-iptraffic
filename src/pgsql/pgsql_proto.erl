@@ -625,6 +625,11 @@ encode_message(bind, {NamePortal, NamePrepared,
 			       Bin = list_to_binary(List),
 			       Size = size(Bin),
 			       <<Size:32/integer, Bin/binary>>;
+               (Boolean) when is_boolean(Boolean) ->
+                   List = atom_to_list(Boolean),
+                   Bin = list_to_binary(List),
+                   Size = size(Bin),
+                   <<Size:32/integer, Bin/binary>>;
 			   (Text) ->
 			       Bin = list_to_binary(Text),
 			       Size = size(Bin),
