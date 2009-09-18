@@ -49,11 +49,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION stop_session(VARCHAR, VARCHAR, TIMESTAMP) RETURNS INTEGER AS $$
+CREATE OR REPLACE FUNCTION stop_session(VARCHAR, VARCHAR, TIMESTAMP, INTEGER) RETURNS INTEGER AS $$
 DECLARE
     result INTEGER;
 BEGIN
-    UPDATE radius_sessions SET finished_at = $3, updated_at = $3 WHERE sid = $2 AND finished_at IS NULL AND account_id = (SELECT id FROM accounts WHERE login ILIKE $1);
+    UPDATE radius_sessions SET finished_at = $3, updated_at = $3, expired_at = $4 WHERE sid = $2 AND finished_at IS NULL AND account_id = (SELECT id FROM accounts WHERE login ILIKE $1);
     GET DIAGNOSTICS result = ROW_COUNT;
     RETURN result;
 END;

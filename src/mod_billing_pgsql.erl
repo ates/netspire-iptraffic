@@ -6,7 +6,7 @@
 -export([start_link/1,
          fetch_account/2,
          start_session/3,
-         stop_session/4,
+         stop_session/5,
          sync_session_data/4]).
 
 %% gen_module callbacks
@@ -40,8 +40,8 @@ fetch_account(_, Username) ->
 start_session(UserName, StartedAt, ExpiredAt) ->
     gen_server:call(?MODULE, {start_session, UserName, StartedAt, ExpiredAt}).
 
-stop_session(_, UserName, SID, FinishedAt) ->
-    gen_server:call(?MODULE, {stop_session, UserName, SID, FinishedAt}).
+stop_session(_, UserName, SID, FinishedAt, Expired) ->
+    gen_server:call(?MODULE, {stop_session, UserName, SID, FinishedAt, Expired}).
 
 sync_session_data(SID, In, Out, Balance) ->
     gen_server:call(?MODULE, {sync_session_data, SID, In, Out, Balance}).
@@ -94,8 +94,8 @@ process_fetch_account_result(Result) ->
 handle_call({start_session, UserName, SID, StartedAt}, _From, State) ->
     pgsql:pquery(State#state.ref, "SELECT * FROM start_session($1, $2, $3)", [UserName, SID, StartedAt]),
     {reply, {stop, ok}, State};
-handle_call({stop_session, UserName, SID, FinishedAt}, _From, State) ->
-    pgsql:pquery(State#state.ref, "SELECT * FROM stop_session($1, $2, $3)", [UserName, SID, FinishedAt]),
+handle_call({stop_session, UserName, SID, FinishedAt, Expired}, _From, State) ->
+    pgsql:pquery(State#state.ref, "SELECT * FROM stop_session($1, $2, $3, $4)", [UserName, SID, FinishedAt, Expired]),
     {reply, {stop, ok}, State};
 handle_call({sync_session_data, SID, In, Out, Balance}, _From, State) ->
     pgsql:pquery(State#state.ref, "SELECT * FROM sync_session_data($1, $2, $3, $4)", [SID, In, Out, Balance]),
