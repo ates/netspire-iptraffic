@@ -1,7 +1,7 @@
 -module(mod_billing_pgsql).
 
 -behaviour(gen_module).
--behaviour(gen_server). 
+-behaviour(gen_server).
 
 -export([start_link/1,
          fetch_account/2,
@@ -11,7 +11,7 @@
 
 %% gen_module callbacks
 -export([start/1, stop/0]).
- 
+
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
@@ -72,7 +72,7 @@ connect(Options) ->
             timer:sleep(3000),
             connect([Server, DB, Username, Password, Port])
     end.
- 
+
 process_fetch_account_result(Result) ->
     F = fun(List) ->
             [_, _, _, Name, Value] = List,
@@ -86,7 +86,7 @@ process_fetch_account_result(Result) ->
                 Res ->
                     [Password, Balance, Plan, _, _] = lists:nth(1, Res),
                     Attrs = lists:map(F, Res),
-                    {ok, Password, Attrs, {Balance, Plan}}
+                    {ok, {Password, Attrs, {Balance, Plan}}}
             end;
         _ -> undefined
     end.

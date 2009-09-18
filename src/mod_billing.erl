@@ -67,39 +67,38 @@ sync_session(SID) ->
 prepare_session(Response, Request, {Balance, Plan}, _Client) ->
     UserName = radius:attribute_value(?USER_NAME, Request),
     IP = radius:attribute_value(?FRAMED_IP_ADDRESS, Response),
-    case radius_sessions:is_exist(UserName) of
-        false ->
-            Timeout = gen_module:get_option(?MODULE, session_timeout, ?SESSION_TIMEOUT),
-            Data = #data{tariff = Plan, balance = Balance},
-            radius_sessions:prepare(UserName, IP, Timeout, Data),
-            Response;
-        true ->
-            #radius_packet{code = ?ACCESS_REJECT}
-    end.
+    Timeout = gen_module:get_option(?MODULE, session_timeout, ?SESSION_TIMEOUT),
+    Data = #data{tariff = Plan, balance = Balance},
+    radius_sessions:prepare(UserName, IP, Timeout, Data),
+    Response.
 
 %%
 %% Internal functions
 %%
 
 init([_Options]) ->
+    radius_sessions:init_mnesia(),
+    netspire_netflow:add_packet_handler(?MODULE, []),
     netspire_hooks:add(radius_acct_lookup, ?MODULE, lookup_account),
     netspire_hooks:add(radius_access_accept, ?MODULE, prepare_session, 200),
     netspire_hooks:add(radius_acct_request, ?MODULE, accounting_request),
-    radius_sessions:init_mnesia(),
-    netspire_netflow:add_packet_handler(?MODULE, []),
     {ok, _} = timer:send_interval(90000, self(), sync_sessions),
     {ok, _} = timer:send_interval(90000, self(), expire_sessions),
     {ok, no_state}.
 
 handle_call({lookup_account, UserName}, _From, State) ->
-    case netspire_hooks:run_fold(backend_fetch_account, undefined, [UserName]) of
-        {ok, Password, Replies, Extra} ->
-            Response = {ok, {Password, Replies, Extra}},
-            {reply, {stop, Response}, State};
-        undefined ->
+    case radius_sessions:is_exist(UserName) of
+        false ->
+            case netspire_hooks:run_fold(backend_fetch_account, undefined, [UserName]) of
+                {ok, Data} ->
+                    Response = {ok, Data},
+                    {reply, {stop, Response}, State};
+                undefined ->
+                    {reply, {stop, undefined}, State}
+            end;
+        true ->
             {reply, {stop, undefined}, State}
     end;
-
 handle_call({accounting_request, _Response, ?ACCT_START, Request, Client}, _From, State) ->
     UserName = radius:attribute_value(?USER_NAME, Request),
     SID = radius:attribute_value(?ACCT_SESSION_ID, Request),
