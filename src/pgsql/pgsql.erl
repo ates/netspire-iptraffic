@@ -1,189 +1,180 @@
-%%% File    : pgsql.erl
-%%% Author  : Christian Sunesson <chsu79@gmail.com>
-%%% Description : PostgresQL interface
-%%% Created : 11 May 2005
-
-%%
-%% API for accessing the postgres driver.
-%%
+%%% Copyright (C) 2008 - Will Glozer.  All rights reserved.
 
 -module(pgsql).
--export([connect/1, connect/4, connect/5,
-         connect_link/1]).
 
--export([squery/2, squery/3,
-	 pquery/3, 
-	 terminate/1, 
-	 prepare/3, unprepare/2, 
-	 execute/3, execute/4, transaction/2, transaction/3]).
+-export([connect/2, connect/3, connect/4, close/1]).
+-export([get_parameter/2, squery/2, equery/2, equery/3]).
+-export([parse/2, parse/3, parse/4, describe/2, describe/3]).
+-export([bind/3, bind/4, execute/2, execute/3, execute/4]).
+-export([close/2, close/3, sync/1]).
+-export([with_transaction/2]).
 
+-include("pgsql.hrl").
 
-connect(Host, Database, User, Password) ->
-    connect([{database, Database},
-	     {host, Host},
-	     {user, User},
-	     {password, Password}]).
+%% -- client interface --
 
-connect(Host, Database, User, Password, Port) ->
-    connect([{database, Database},
-	     {host, Host},
-	     {user, User},
-	     {port, Port},
-	     {password, Password}]).
+connect(Host, Opts) ->
+    connect(Host, os:getenv("USER"), "", Opts).
 
-connect(Options) ->
-    pgsql_proto:start(Options).
+connect(Host, Username, Opts) ->
+    connect(Host, Username, "", Opts).
 
-connect_link(Options) ->
-    pgsql_proto:start_link(Options).
+connect(Host, Username, Password, Opts) ->
+    {ok, C} = pgsql_connection:start_link(),
+    pgsql_connection:connect(C, Host, Username, Password, Opts).
 
-%% Close a connection
-terminate(Db) ->
-    gen_server:call(Db, terminate).
+close(C) when is_pid(C) ->
+    catch pgsql_connection:stop(C),
+    ok.
 
-%%% In the "simple query" protocol, the frontend just sends a 
-%%% textual query string, which is parsed and immediately 
-%%% executed by the backend.  
+get_parameter(C, Name) ->
+    pgsql_connection:get_parameter(C, Name).
 
-%% A simple query can contain multiple statements (separated with a semi-colon),
-%% and each statement's response.
+squery(C, Sql) ->
+    ok = pgsql_connection:squery(C, Sql),
+    case receive_results(C, []) of
+        [Result] -> Result;
+        Results  -> Results
+    end.
 
-%%% squery(Db, Query) -> {ok, Results} | ... no real error handling
-%%% Query = string()
-%%% Results = [Result]
-%%% Result = {"SELECT", RowDesc, ResultSet} | ...
-squery(Db, Query) ->
-    squery(Db, Query, infinity).
+equery(C, Sql) ->
+    equery(C, Sql, []).
 
-%%% squery(Db, Query) -> {ok, Results} | ... no real error handling
-%%% Query = string()
-%%% Timeout = integer() | infinity
-%%% Results = [Result]
-%%% Result = {"SELECT", RowDesc, ResultSet} | ...
-squery(Db, Query, Timeout) ->
-    gen_server:call(Db, {squery, Query}, Timeout).
+equery(C, Sql, Parameters) ->
+    case pgsql_connection:parse(C, "", Sql, []) of
+        {ok, #statement{types = Types} = S} ->
+            Typed_Parameters = lists:zip(Types, Parameters),
+            ok = pgsql_connection:equery(C, S, Typed_Parameters),
+            receive_result(C, undefined);
+        Error ->
+            Error
+    end.
 
+%% parse
 
-%%% In the "extended query" protocol, processing of queries is 
-%%% separated into multiple steps: parsing, binding of parameter
-%%% values, and execution. This offers flexibility and performance
-%%% benefits, at the cost of extra complexity.
+parse(C, Sql) ->
+    parse(C, "", Sql, []).
 
-%%% pquery(Db, Query, Params) -> {ok, Command, Status, NameTypes, Rows} | timeout | ...
-%%% Query = string()
-%%% Params = [term()]
-%%% Command = string()
-%%% Status = idle | transaction | failed_transaction
-%%% NameTypes = [{ColName, ColType}]
-%%% Rows = [list()]
-pquery(Db, Query, Params) ->
-    gen_server:call(Db, {equery, {Query, Params}}).
+parse(C, Sql, Types) ->
+    parse(C, "", Sql, Types).
 
-%%% prepare(Db, Name, Query) -> {ok, Status, ParamTypes, ResultTypes}
-%%% Status = idle | transaction | failed_transaction
-%%% ParamTypes = [atom()]
-%%% ResultTypes = [{ColName, ColType}]
-prepare(Db, Name, Query) when is_atom(Name) ->
-    gen_server:call(Db, {prepare, {atom_to_list(Name), Query}}).
+parse(C, Name, Sql, Types) ->
+    pgsql_connection:parse(C, Name, Sql, Types).
 
-%%% unprepare(Db, Name) -> ok | timeout | ...
-%%% Name = atom()
-unprepare(Db, Name) when is_atom(Name) ->
-    gen_server:call(Db, {unprepare, atom_to_list(Name)}).
+%% bind
 
-%%% execute(Db, Name, Params) -> {ok, Result} | timeout | ...
-%%% Result = {'INSERT', NRows} |
-%%%          {'DELETE', NRows} |
-%%%          {'SELECT', ResultSet} |
-%%%          ...
-%%% ResultSet = [Row]
-%%% Row = list()
-execute(Db, Name, Params) when is_atom(Name), is_list(Params) ->
-    gen_server:call(Db,{execute, {atom_to_list(Name), Params}}).
+bind(C, Statement, Parameters) ->
+    bind(C, Statement, "", Parameters).
 
-%%% execute(Db, Name, Params, Timeout) -> {ok, Result} | timeout | ...
-%%% Result = {'INSERT', NRows} |
-%%%          {'DELETE', NRows} |
-%%%          {'SELECT', ResultSet} |
-%%%          ...
-%%% ResultSet = [Row]
-%%% Row = list()
-%%% Timeout = integer() | infinity
-execute(Db, Name, Params, Timeout) when is_atom(Name), is_list(Params) ->
-    gen_server:call(Db,{execute, {atom_to_list(Name), Params}}, Timeout).
+bind(C, Statement, PortalName, Parameters) ->
+    pgsql_connection:bind(C, Statement, PortalName, Parameters).
 
+%% execute
 
-%% @doc Executes all statements that are execute in Fun in an transaction
-%% with inifnity timeout.
-%% @see transaction/3
-transaction(Db, Fun) ->  
-  transaction(Db, Fun, infinity).
+execute(C, S) ->
+    execute(C, S, "", 0).
 
-%% @doc Executes all statements that are execute in Fun in an transaction..
-%% If an error occurs/is thrown or if the fun returns error, or {error, Reason},
-%% the transaction is rolled back. 
-%% Returns {error, {rollback, RollbackResult, Error}}, if an error occurred and
-%% the transaction was rolled back. RollbackResult = term() is the result of the
-%% rollback, e.g. {ok, "ROLLBACK"} if the rollback was successfull, Error = term()
-%% contains the reason for rollback.
-%% Returns {error, {begin_transaction, Reason}} if the transaction could not be started.
-%% Returns the return value from the Fun, if the transaction was commited successfully.
-%% 
-%% e.g:
-%% pgsql:prepare(Db, stm1, "INSERT INTO foo (bar) VALUES ($1)"),
-%% pgsql:prepare(Db, stm2, "INSERT INTO bar (foo) VALUES ($1)"),
-%% Fun = fun() -> 
-%%  case pgsql:execute(Db, stm1, [1]) of
-%%    {ok,{'INSERT',1}} ->
-%%      case pgsql:execute(Db, stm2, [2]) of
-%%        {ok,{'INSERT',1}} -> ok; % commit transaction and return ok
-%%        Unexpected -> error % rollback the transaction
-%%      end;
-%%    Unexpected -> {error, Unexpected} % rollback the transaction
-%%  end
-%% end,
-%% case pgsql:transaction(Db, Fun) of
-%%  ok -> io:format("transaction commited");
-%%  {error, {begin_transaction, _}} -> io:format("could not start transaction.");
-%%  {error, {rollback, RollbackResult, Error}} ->
-%%    case RollbackResult of 
-%%      {ok, "ROLLBACK"} -> io:format("transaction was successfully rolled back.");
-%%      RollbackError -> io:format("transaction not commited, but rollback did not work.")
-%%    end
-%% end
-%%
-%% NOTICE: this transaction function does not block the Db connection thread, when starting the transaction
-%% and executing the statements in that transaction. so make sure, that you DO NOT EXECUTE ANY STATEMENTS
-%% AT THE SAME DB CONNECTION FROM ANOTHER THREAD than the tread that invokes this transaction function, 
-%% because otherwise they can be executed in the current transaction.
-%%
-%%
-%% @spec transaction(Db::pid(), Fun::function(), Timeout::integer() | infinity) ->
-%%   {error, {rollback, RollbackResult, Error}} | {error, {begin_transaction, Unexpected}} | FunResult
-transaction(Db, Fun, Timeout) ->
-  case squery(Db, "BEGIN", Timeout) of
-    {ok,["BEGIN"]} ->
-      try
-        case Fun() of
-          error ->
-            rollback(Db, error, Timeout);
-          {error, Reason} ->
-            rollback(Db, Reason, Timeout);
-          Result ->
-            case squery(Db, "COMMIT", Timeout) of
-              {ok,["COMMIT"]} -> 
-                Result;
-              Unexpected -> 
-                rollback(Db, Unexpected, Timeout)
-            end
-        end
-      catch Class:Error ->
-        rollback(Db, {Class, Error}, Timeout)
-      end;
-    Unexpected -> 
-      {error, {begin_transaction, Unexpected}}
-  end.
+execute(C, S, N) ->
+    execute(C, S, "", N).
 
-rollback(Db, Error, Timeout) ->
-  RollbackResult = squery(Db, "ROLLBACK", Timeout),
-  {error, {rollback, RollbackResult, Error}}.
+execute(C, S, PortalName, N) ->
+    pgsql_connection:execute(C, S, PortalName, N),
+    receive_extended_result(C).
+
+%% statement/portal functions
+
+describe(C, #statement{name = Name}) ->
+    pgsql_connection:describe(C, statement, Name).
+
+describe(C, Type, Name) ->
+    pgsql_connection:describe(C, Type, Name).
+
+close(C, #statement{name = Name}) ->
+    pgsql_connection:close(C, statement, Name).
+
+close(C, Type, Name) ->
+    pgsql_connection:close(C, Type, Name).
+
+sync(C) ->
+    pgsql_connection:sync(C).
+
+%% misc helper functions
+with_transaction(C, F) ->
+    try {ok, [], []} = squery(C, "BEGIN"),
+        R = F(C),
+        {ok, [], []} = squery(C, "COMMIT"),
+        R
+    catch
+        _:Why ->
+            squery(C, "ROLLBACK"),
+            {rollback, Why}
+    end.
+
+%% -- internal functions --
+
+receive_result(C, Result) ->
+    try receive_result(C, [], []) of
+        done    -> Result;
+        R       -> receive_result(C, R)
+    catch
+        throw:E -> E
+    end.
+
+receive_results(C, Results) ->
+    try receive_result(C, [], []) of
+        done    -> lists:reverse(Results);
+        R       -> receive_results(C, [R | Results])
+    catch
+        throw:E -> E
+    end.
+
+receive_result(C, Cols, Rows) ->
+    receive
+        {pgsql, C, {columns, Cols2}} ->
+            receive_result(C, Cols2, Rows);
+        {pgsql, C, {data, Row}} ->
+            receive_result(C, Cols, [Row | Rows]);
+        {pgsql, C, {error, _E} = Error} ->
+            Error;
+        {pgsql, C, {complete, {_Type, Count}}} ->
+            case Rows of
+                [] -> {ok, Count};
+                _L -> {ok, Count, Cols, lists:reverse(Rows)}
+            end;
+        {pgsql, C, {complete, _Type}} ->
+            {ok, Cols, lists:reverse(Rows)};
+        {pgsql, C, {notice, _N}} ->
+            receive_result(C, Cols, Rows);
+        {pgsql, C, done} ->
+            done;
+        {pgsql, C, timeout} ->
+            throw({error, timeout});
+        {'EXIT', C, _Reason} ->
+            throw({error, closed})
+    end.
+
+receive_extended_result(C)->
+    receive_extended_result(C, []).
+
+receive_extended_result(C, Rows) ->
+    receive
+        {pgsql, C, {data, Row}} ->
+            receive_extended_result(C, [Row | Rows]);
+        {pgsql, C, {error, _E} = Error} ->
+            Error;
+        {pgsql, C, suspended} ->
+            {partial, lists:reverse(Rows)};
+        {pgsql, C, {complete, {_Type, Count}}} ->
+            case Rows of
+                [] -> {ok, Count};
+                _L -> {ok, Count, lists:reverse(Rows)}
+            end;
+        {pgsql, C, {complete, _Type}} ->
+            {ok, lists:reverse(Rows)};
+        {pgsql, C, {notice, _N}} ->
+            receive_extended_result(C, Rows);
+        {pgsql, C, timeout} ->
+            {error, timeout};
+        {'EXIT', C, _Reason} ->
+            {error, closed}
+    end.

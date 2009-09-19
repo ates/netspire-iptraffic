@@ -25,26 +25,28 @@ start(Options) ->
     ChildSpec = {?MODULE,
                  {?MODULE, start_link, [Options]},
                  transient,
-                 brutal_kill,
+                 3000,
                  worker,
                  [?MODULE]
                 },
     supervisor:start_child(netspire_sup, ChildSpec).
 
 start_link(Options) ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [Options], []).
+    {ok, Pid} = gen_server:start_link({local, ?MODULE}, ?MODULE, [Options], []),
+    gen_server:call(Pid, {create_db_connection, Options}),
+    {ok, Pid}.
 
 fetch_account(_, Username) ->
     gen_server:call(?MODULE, {fetch_account, Username}).
 
-start_session(UserName, StartedAt, ExpiredAt) ->
-    gen_server:call(?MODULE, {start_session, UserName, StartedAt, ExpiredAt}).
+start_session(UserName, SID, StartedAt) ->
+    gen_server:cast(?MODULE, {start_session, UserName, SID, calendar:now_to_local_time(StartedAt)}).
 
 stop_session(UserName, SID, FinishedAt, Expired) ->
-    gen_server:call(?MODULE, {stop_session, UserName, SID, FinishedAt, Expired}).
+    gen_server:cast(?MODULE, {stop_session, UserName, SID, calendar:now_to_local_time(FinishedAt), Expired}).
 
 sync_session_data(SID, In, Out, Balance) ->
-    gen_server:call(?MODULE, {sync_session_data, SID, In, Out, Balance}).
+    gen_server:cast(?MODULE, {sync_session_data, SID, In, Out, Balance}).
 
 stop() ->
     ?INFO_MSG("Stopping dynamic module ~p~n", [?MODULE]),
@@ -52,71 +54,71 @@ stop() ->
     supervisor:terminate_child(netspire_sup, ?MODULE),
     supervisor:delete_child(netspire_sup, ?MODULE).
 
-init([Options]) ->
-    Ref = connect(Options),
-    erlang:monitor(process, Ref),
+init([_Options]) ->
+    process_flag(trap_exit, true),
     netspire_hooks:add(backend_fetch_account, ?MODULE, fetch_account),
     netspire_hooks:add(backend_start_session, ?MODULE, start_session),
     netspire_hooks:add(backend_stop_session, ?MODULE, stop_session),
     netspire_hooks:add(backend_sync_session, ?MODULE, sync_session_data),
-    {ok, #state{ref = Ref}}.
-
-connect(Options) ->
-    [Server, DB, Username, Password, Port] = Options,
-    case pgsql:connect(Server, DB, Username, Password, Port) of
-        {ok, Ref} ->
-            ?INFO_MSG("Database connection has been established~n", []),
-            Ref;
-        {error, Reason} ->
-            ?ERROR_MSG("Connection to database failed: ~p~n", [Reason]),
-            timer:sleep(3000),
-            connect([Server, DB, Username, Password, Port])
-    end.
+    {ok, #state{}}.
 
 process_fetch_account_result(Result) ->
     F = fun(List) ->
-            [_, _, _, Name, Value] = List,
-            {Name, Value}
+            {_, _, _, Name, Value} = List,
+            {binary_to_list(Name), binary_to_list(Value)}
     end,
     case Result of
-        {ok, _, _, _, Terms} ->
-            case Terms of
+        {ok, _Columns, Rows} ->
+            case Rows of
                 [] ->
                     undefined;
                 Res ->
-                    [Password, Balance, Plan, _, _] = lists:nth(1, Res),
+                    {Password, Balance, Plan, _, _} = lists:nth(1, Res),
                     Attrs = lists:map(F, Res),
-                    {ok, {Password, Attrs, {Balance, Plan}}}
+                    {ok, {binary_to_list(Password), Attrs, {Balance, binary_to_list(Plan)}}}
             end;
         _ -> undefined
     end.
 
-handle_call({start_session, UserName, SID, StartedAt}, _From, State) ->
-    pgsql:pquery(State#state.ref, "SELECT * FROM start_session($1, $2, $3)", [UserName, SID, StartedAt]),
-    {reply, {stop, ok}, State};
-handle_call({stop_session, UserName, SID, FinishedAt, Expired}, _From, State) ->
-    pgsql:pquery(State#state.ref, "SELECT * FROM stop_session($1, $2, $3, $4)", [UserName, SID, FinishedAt, Expired]),
-    {reply, {stop, ok}, State};
-handle_call({sync_session_data, SID, In, Out, Balance}, _From, State) ->
-    pgsql:pquery(State#state.ref, "SELECT * FROM sync_session_data($1, $2, $3, $4)", [SID, In, Out, Balance]),
-    {reply, {stop, ok}, State};
+handle_cast({start_session, UserName, SID, StartedAt}, State) ->
+    pgsql:equery(State#state.ref, "SELECT * FROM start_session($1, $2, $3)",
+        [UserName, SID, StartedAt]),
+    {noreply, State};
+handle_cast({stop_session, UserName, SID, FinishedAt, Expired}, State) ->
+    pgsql:equery(State#state.ref, "SELECT * FROM stop_session($1, $2, $3, $4)",
+        [UserName, SID, FinishedAt, Expired]),
+    {noreply, State};
+handle_cast({sync_session_data, SID, In, Out, Balance}, State) ->
+    pgsql:equery(State#state.ref, "SELECT * FROM sync_session_data($1, $2, $3, $4)",
+        [SID, In, Out, Balance]),
+    {noreply, State};
+handle_cast(_Request, State) ->
+    {noreply, State}.
 
+handle_call({create_db_connection, Options}, _From, State) ->
+    case erlang:apply(pgsql, connect, Options) of
+        {ok, Ref} ->
+            ?INFO_MSG("Database connection has been established~n", []),
+            {reply, ok, State#state{ref = Ref}};
+        {error, Reason} ->
+            ?ERROR_MSG("Connection to database failed: ~p~n", [Reason]),
+            {stop, conn_failed, ok, State}
+    end;
 handle_call({fetch_account, UserName}, _From, State) ->
-    Result = pgsql:pquery(State#state.ref, "SELECT * FROM auth($1)", [UserName]),
+    Result = pgsql:equery(State#state.ref, "SELECT * FROM auth($1)", [UserName]),
     Result1 = process_fetch_account_result(Result),
     {reply, {stop, Result1}, State};
 handle_call(stop, _From, State) ->
-        {stop, normal, ok, State};
+    {stop, normal, ok, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
-handle_cast(_Request, State) ->
-    {noreply, State}.
-
-handle_info({'DOWN', _MonitorRef, process, _Pid, _Info}, State) ->
-    ?ERROR_MSG("Connection to database has been dropped~n", []),
-    {stop, connection_dropped, State};
+handle_info({'EXIT', From, Reason}, #state{ref = From} = State) ->
+    ?WARNING_MSG("Lost connection to database backend ~p~n", [Reason]),
+    % Otherwise it will exceed main sup's MaxR and cause application stop
+    timer:sleep(3000),
+    {stop, db_conn_died, State};
 handle_info(_Request, State) ->
     {noreply, State}.
 
@@ -124,10 +126,8 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 terminate(_Reason, State) ->
-    pgsql:terminate(State#state.ref),
+    pgsql:close(State#state.ref),
     netspire_hooks:delete(backend_fetch_account, ?MODULE, fetch_account),
     netspire_hooks:delete(backend_start_session, ?MODULE, start_session),
     netspire_hooks:delete(backend_stop_session, ?MODULE, stop_session),
-    netspire_hooks:delete(backend_sync_session, ?MODULE, sync_session_data),
-    ok.
-
+    netspire_hooks:delete(backend_sync_session, ?MODULE, sync_session_data).

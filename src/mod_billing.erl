@@ -28,7 +28,7 @@
 -define(INTERIM_UPDATE, 3).
 
 -define(SESSION_TIMEOUT, 120000).
--define(SESSION_SYNC_INTERVAL, 60000).
+-define(EXPIRE_SESSIONS_INTERVAL, 5000).
 
 -record(data, {tariff, balance = 0.0, amount = 0.0, octets_in = 0, octets_out = 0}).
 
@@ -89,7 +89,7 @@ init([_Options]) ->
     netspire_hooks:add(radius_acct_lookup, ?MODULE, lookup_account),
     netspire_hooks:add(radius_access_accept, ?MODULE, prepare_session, 200),
     netspire_hooks:add(radius_acct_request, ?MODULE, accounting_request),
-    {ok, _} = timer:send_interval(90000, self(), expire_sessions),
+    {ok, _} = timer:send_interval(?EXPIRE_SESSIONS_INTERVAL, self(), expire_sessions),
     {ok, no_state}.
 
 handle_call({lookup_account, UserName}, _From, State) ->
@@ -108,27 +108,22 @@ handle_call({lookup_account, UserName}, _From, State) ->
 handle_call({accounting_request, _Response, ?ACCT_START, Request, Client}, _From, State) ->
     UserName = radius:attribute_value(?USER_NAME, Request),
     SID = radius:attribute_value(?ACCT_SESSION_ID, Request),
-    StartedAt = time_to_string(calendar:now_to_local_time(now())),
-    ExpiredAt = netspire_util:timestamp(),
     Timeout = gen_module:get_option(?MODULE, session_timeout, ?SESSION_TIMEOUT),
-    F = fun(S) ->
-            S#session{nas_spec = Client}
-    end,
+    ExpiresAt = netspire_util:timestamp() + Timeout,
+    F = fun(S) -> S#session{nas_spec = Client} end,
     Reply = #radius_packet{code = ?ACCT_RESPONSE},
-    radius_sessions:start(UserName, SID, ExpiredAt + Timeout, F),
-    netspire_hooks:run(backend_start_session, [UserName, SID, StartedAt]),
+    radius_sessions:start(UserName, SID, ExpiresAt, F),
+    netspire_hooks:run(backend_start_session, [UserName, SID, now()]),
     {reply, Reply, State};
 handle_call({accounting_request, _Response, ?ACCT_STOP, Request, _Client}, _From, State) ->
     SID = radius:attribute_value(?ACCT_SESSION_ID, Request),
-    FinishedAt = netspire_util:timestamp(),
     Reply = #radius_packet{code = ?ACCT_RESPONSE},
     UserName = radius:attribute_value(?USER_NAME, Request),
-    Now = calendar:now_to_local_time(now()),
     case radius_sessions:is_exist(UserName) of
         true ->
             sync_session(SID),
-            radius_sessions:stop(SID, FinishedAt),
-            netspire_hooks:run(backend_stop_session, [UserName, SID, time_to_string(Now), true]);
+            radius_sessions:stop(SID, netspire_util:timestamp()),
+            netspire_hooks:run(backend_stop_session, [UserName, SID, now(), false]);
         false -> ok
     end,
     {reply, Reply, State};
@@ -198,7 +193,7 @@ apply_tariff_plan(Session, Direction, Octets) ->
         erlang:apply(Tariff, calculate, [Direction, Octets])
     catch
         _:Reason ->
-            ?ERROR_MSG("An error caused while trying starting tariff ~p: ~p~n", [Tariff, Reason])
+            ?ERROR_MSG("An error occured while running tariff ~p: ~p~n", [Tariff, Reason])
     end,
     NewBalance = Balance - (Data#data.amount + Amount),
     {ok, NewBalance, Amount}.
@@ -234,9 +229,8 @@ handle_info(expire_sessions, State) ->
             lists:foreach(fun(S) ->
                         SID = S#session.id,
                         UserName = S#session.username,
-                        Now = calendar:now_to_local_time(now()),
                         sync_session(SID),
-                        netspire_hooks:run(backend_stop_session, [UserName, SID, time_to_string(Now), false]),
+                        netspire_hooks:run(backend_stop_session, [UserName, SID, now(), true]),
                         radius_sessions:purge(S) end, Result)
     end,
     {noreply, State};
@@ -252,6 +246,3 @@ terminate(_Reason, _State) ->
     netspire_hooks:delete(radius_access_accept, ?MODULE, prepare_session),
     netspire_hooks:delete(radius_acct_request, ?MODULE, accounting_request),
     ok.
-
-time_to_string({{Y, M, D}, {H, M1, S}}) ->
-    io_lib:format("~p-~p-~p ~p:~p:~p", [Y, M, D, H, M1, S]).

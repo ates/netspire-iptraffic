@@ -12,7 +12,7 @@ CREATE SEQUENCE netflow_session_data_id_seq START 1;
 
 CREATE TABLE netflow_session_data(
     id INTEGER NOT NULL DEFAULT NEXTVAL('netflow_session_data_id_seq'::text),
-    sid_id INTEGER NOT NULL,
+    session_id INTEGER NOT NULL,
     octets_in BIGINT DEFAULT 0,
     octets_out BIGINT DEFAULT 0,
     amount NUMERIC(20, 10) DEFAULT 0,
@@ -57,19 +57,19 @@ BEGIN
     GET DIAGNOSTICS result = ROW_COUNT;
     RETURN result;
 END;
-$$ LANGUAGE plpgsql; 
+$$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION sync_session_data(VARCHAR, BIGINT, BIGINT, VARCHAR) RETURNS INTEGER AS $$
 DECLARE
-    _sid_id INTEGER;
+    _id INTEGER;
     _acct_id INTEGER;
 BEGIN
-    SELECT id INTO _sid_id FROM radius_sessions WHERE sid = $1;
+    SELECT id INTO _id FROM radius_sessions WHERE sid = $1;
     SELECT account_id INTO _acct_id FROM radius_sessions WHERE sid = $1;
     UPDATE accounts SET balance = balance - $4::FLOAT WHERE id = _acct_id;
-    UPDATE radius_sessions SET updated_at = LOCALTIMESTAMP WHERE id = _sid_id;
-    LOOP 
-        UPDATE netflow_session_data SET octets_in = $2, octets_out = $3, updated_at = LOCALTIMESTAMP, amount = $4::FLOAT WHERE sid_id = _sid_id;
+    UPDATE radius_sessions SET updated_at = LOCALTIMESTAMP WHERE id = _id;
+    LOOP
+        UPDATE netflow_session_data SET octets_in = $2, octets_out = $3, updated_at = LOCALTIMESTAMP, amount = $4::FLOAT WHERE session_id = _id;
         IF found THEN
             RETURN 1;
         END IF;
