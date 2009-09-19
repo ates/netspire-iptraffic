@@ -75,7 +75,7 @@ sync_session(SID) ->
         new -> ok;
         _ ->
             {data, _, _, Amount, In, Out} = S#session.data,
-            netspire_hooks:run(backend_sync_session, [SID, In, Out, float_to_list(Amount)]),
+            netspire_hooks:run(backend_sync_session, [SID, In, Out, Amount]),
             ?INFO_MSG("Netflow session data was synced for ~s~n", [SID])
     end.
 
