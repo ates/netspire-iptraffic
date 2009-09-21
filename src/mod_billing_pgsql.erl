@@ -32,12 +32,15 @@ start(Options) ->
     supervisor:start_child(netspire_sup, ChildSpec).
 
 start_link(Options) ->
-    {ok, Pid} = gen_server:start_link({local, ?MODULE}, ?MODULE, [Options], []),
-    gen_server:call(Pid, {create_db_connection, Options}),
-    {ok, Pid}.
+    case gen_server:start_link({local, ?MODULE}, ?MODULE, [Options], []) of
+        {ok, Pid} ->
+            gen_server:call(Pid, {create_db_connection, Options}),
+            {ok, Pid};
+        Error -> Error
+    end.
 
-fetch_account(_, Username) ->
-    gen_server:call(?MODULE, {fetch_account, Username}).
+fetch_account(_, UserName) ->
+    gen_server:call(?MODULE, {fetch_account, UserName}).
 
 start_session(UserName, SID, StartedAt) ->
     gen_server:cast(?MODULE, {start_session, UserName, SID, calendar:now_to_local_time(StartedAt)}).
