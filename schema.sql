@@ -38,45 +38,46 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION start_session(VARCHAR, VARCHAR, TIMESTAMP) RETURNS  BOOLEAN AS $$
+CREATE OR REPLACE FUNCTION start_session(VARCHAR, VARCHAR, TIMESTAMP) RETURNS BOOLEAN AS $$
 DECLARE
     acct_id integer;
 BEGIN
-    SELECT id INTO acct_id  FROM accounts WHERE login ILIKE $1;
+    SELECT id INTO acct_id FROM accounts WHERE login ILIKE $1;
     INSERT INTO radius_sessions(account_id, sid, started_at) VALUES (acct_id, $2, $3);
 
     RETURN TRUE;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION stop_session(VARCHAR, VARCHAR, TIMESTAMP, BOOLEAN) RETURNS INTEGER AS $$
+CREATE OR REPLACE FUNCTION stop_session(VARCHAR, VARCHAR, TIMESTAMP, BIGINT, BIGINT, FLOAT, BOOLEAN) RETURNS INTEGER AS $$
 DECLARE
-    result INTEGER;
+    _acct_id INTEGER;
 BEGIN
-    UPDATE radius_sessions SET finished_at = $3, expired = $4 WHERE sid = $2 AND finished_at IS NULL AND account_id = (SELECT id FROM accounts WHERE login ILIKE $1);
-    GET DIAGNOSTICS result = ROW_COUNT;
-    RETURN result;
+    SELECT account_id INTO _acct_id FROM radius_sessions WHERE sid = $2;
+    PERFORM interim_session($1, $2, $3, $4, $5, $6);
+    UPDATE accounts SET balance = balance - $6 WHERE id = _acct_id;
+    UPDATE radius_sessions SET finished_at = $3, expired = $7 WHERE sid = $2 AND finished_at IS NULL AND account_id = (SELECT id FROM accounts WHERE login ILIKE $1);
+    RETURN 1;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION sync_session_data(VARCHAR, BIGINT, BIGINT, FLOAT) RETURNS INTEGER AS $$
+CREATE OR REPLACE FUNCTION interim_session(VARCHAR, VARCHAR, TIMESTAMP, BIGINT, BIGINT, FLOAT) RETURNS INTEGER AS $$
 DECLARE
     _id INTEGER;
-    _acct_id INTEGER;
+    result INTEGER;
 BEGIN
-    SELECT id INTO _id FROM radius_sessions WHERE sid = $1;
-    SELECT account_id INTO _acct_id FROM radius_sessions WHERE sid = $1;
-    UPDATE accounts SET balance = balance - $4 WHERE id = _acct_id;
-    UPDATE radius_sessions SET updated_at = LOCALTIMESTAMP WHERE id = _id;
+    SELECT id INTO _id FROM radius_sessions WHERE sid = $2;
+    UPDATE radius_sessions SET updated_at = $3 WHERE sid = $2 AND account_id = (SELECT id FROM accounts WHERE login ILIKE $1);
     LOOP
-        UPDATE netflow_session_data SET octets_in = $2, octets_out = $3, updated_at = LOCALTIMESTAMP, amount = $4 WHERE session_id = _id;
-        IF found THEN
+        UPDATE netflow_session_data SET octets_in = $4, octets_out = $5, updated_at = $3, amount = $6 WHERE session_id = _id;
+        if found THEN
             RETURN 1;
         END IF;
         BEGIN
-            INSERT INTO netflow_session_data(session_id, octets_in, octets_out, amount, created_at, updated_at) VALUES(_id, $2, $3, $4, LOCALTIMESTAMP, LOCALTIMESTAMP);
+            INSERT INTO netflow_session_data(session_id, octets_in, octets_out, amount, created_at, updated_at) VALUES(_id, $4, $5, $6, $3, $3);
             RETURN 0;
         END;
     END LOOP;
 END;
 $$ LANGUAGE plpgsql;
+

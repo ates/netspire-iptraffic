@@ -8,7 +8,6 @@
          lookup_account/4,
          prepare_session/4,
          accounting_request/4,
-         sync_session/1,
          handle_packet/2]).
 
 %% gen_module callbacks
@@ -28,7 +27,7 @@
 -define(INTERIM_UPDATE, 3).
 
 -define(SESSION_TIMEOUT, 120000).
--define(EXPIRE_SESSIONS_INTERVAL, 5000).
+-define(EXPIRE_SESSIONS_INTERVAL, 50000).
 
 -record(data, {tariff, balance = 0.0, amount = 0.0, octets_in = 0, octets_out = 0}).
 
@@ -68,16 +67,6 @@ prepare_session(Response, Request, {Balance, Plan}, _Client) ->
     Data = #data{tariff = list_to_atom(Plan), balance = Balance},
     radius_sessions:prepare(UserName, IP, Timeout, Data),
     Response.
-
-sync_session(SID) ->
-    [S] = radius_sessions:fetch(SID),
-    case S#session.status of
-        new -> ok;
-        _ ->
-            {data, _, _, Amount, In, Out} = S#session.data,
-            netspire_hooks:run(backend_sync_session, [SID, In, Out, Amount]),
-            ?INFO_MSG("Netflow session data was synced for ~s~n", [SID])
-    end.
 
 %%
 %% Internal functions
@@ -121,9 +110,20 @@ handle_call({accounting_request, _Response, ?ACCT_STOP, Request, _Client}, _From
     UserName = radius:attribute_value(?USER_NAME, Request),
     case radius_sessions:is_exist(UserName) of
         true ->
-            sync_session(SID),
             radius_sessions:stop(SID, netspire_util:timestamp()),
-            netspire_hooks:run(backend_stop_session, [UserName, SID, now(), false]);
+            case radius_sessions:fetch(SID) of
+                [S] ->
+                    Data = S#session.data,
+                    netspire_hooks:run(backend_stop_session, [
+                                        S#session.username,
+                                        SID,
+                                        now(),
+                                        Data#data.octets_in,
+                                        Data#data.octets_out,
+                                        Data#data.amount,
+                                        false]);
+                _ -> ok
+            end;
         false -> ok
     end,
     {reply, Reply, State};
@@ -133,6 +133,18 @@ handle_call({accounting_request, _Response, ?INTERIM_UPDATE, Request, _Client}, 
     ExpiresAt = netspire_util:timestamp() + Timeout,
     Reply = #radius_packet{code = ?ACCT_RESPONSE},
     radius_sessions:interim(SID, ExpiresAt),
+    case radius_sessions:fetch(SID) of
+        [S] ->
+            Data = S#session.data,
+            netspire_hooks:run(backend_interim_session, [
+                                S#session.username,
+                                SID,
+                                now(),
+                                Data#data.octets_in,
+                                Data#data.octets_out,
+                                Data#data.amount]);
+        _ -> ok
+    end,
     {reply, Reply, State};
 handle_call(stop, _From, State) ->
         {stop, normal, ok, State};
@@ -227,10 +239,13 @@ handle_info(expire_sessions, State) ->
         {ok, []} -> ok;
         {ok, Result} ->
             lists:foreach(fun(S) ->
+                        Data = S#session.data,
                         SID = S#session.id,
                         UserName = S#session.username,
-                        sync_session(SID),
-                        netspire_hooks:run(backend_stop_session, [UserName, SID, now(), true]),
+                        In = Data#data.octets_in,
+                        Out = Data#data.octets_out,
+                        Amount = Data#data.amount,
+                        netspire_hooks:run(backend_stop_session, [UserName, SID, now(), In, Out, Amount, true]),
                         radius_sessions:purge(S) end, Result)
     end,
     {noreply, State};

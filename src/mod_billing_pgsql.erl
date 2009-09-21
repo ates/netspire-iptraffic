@@ -6,8 +6,8 @@
 -export([start_link/1,
          fetch_account/2,
          start_session/3,
-         stop_session/4,
-         sync_session_data/4]).
+         interim_session/6,
+         stop_session/7]).
 
 %% gen_module callbacks
 -export([start/1, stop/0]).
@@ -45,11 +45,11 @@ fetch_account(_, UserName) ->
 start_session(UserName, SID, StartedAt) ->
     gen_server:cast(?MODULE, {start_session, UserName, SID, calendar:now_to_local_time(StartedAt)}).
 
-stop_session(UserName, SID, FinishedAt, Expired) ->
-    gen_server:cast(?MODULE, {stop_session, UserName, SID, calendar:now_to_local_time(FinishedAt), Expired}).
+stop_session(UserName, SID, FinishedAt, In, Out, Amount, Expired) ->
+    gen_server:cast(?MODULE, {stop_session, UserName, SID, calendar:now_to_local_time(FinishedAt), In, Out, Amount, Expired}).
 
-sync_session_data(SID, In, Out, Balance) ->
-    gen_server:cast(?MODULE, {sync_session_data, SID, In, Out, Balance}).
+interim_session(UserName, SID, TimeStamp, In, Out, Balance) ->
+    gen_server:cast(?MODULE, {interim_session, UserName, SID, calendar:now_to_local_time(TimeStamp), In, Out, Balance}).
 
 stop() ->
     ?INFO_MSG("Stopping dynamic module ~p~n", [?MODULE]),
@@ -61,8 +61,8 @@ init([_Options]) ->
     process_flag(trap_exit, true),
     netspire_hooks:add(backend_fetch_account, ?MODULE, fetch_account),
     netspire_hooks:add(backend_start_session, ?MODULE, start_session),
+    netspire_hooks:add(backend_interim_session, ?MODULE, interim_session),
     netspire_hooks:add(backend_stop_session, ?MODULE, stop_session),
-    netspire_hooks:add(backend_sync_session, ?MODULE, sync_session_data),
     {ok, #state{}}.
 
 process_fetch_account_result(Result) ->
@@ -87,13 +87,13 @@ handle_cast({start_session, UserName, SID, StartedAt}, State) ->
     pgsql:equery(State#state.ref, "SELECT * FROM start_session($1, $2, $3)",
         [UserName, SID, StartedAt]),
     {noreply, State};
-handle_cast({stop_session, UserName, SID, FinishedAt, Expired}, State) ->
-    pgsql:equery(State#state.ref, "SELECT * FROM stop_session($1, $2, $3, $4)",
-        [UserName, SID, FinishedAt, Expired]),
+handle_cast({stop_session, UserName, SID, FinishedAt, In, Out, Amount, Expired}, State) ->
+    pgsql:equery(State#state.ref, "SELECT * FROM stop_session($1, $2, $3, $4, $5, $6, $7)",
+        [UserName, SID, FinishedAt, In, Out, Amount, Expired]),
     {noreply, State};
-handle_cast({sync_session_data, SID, In, Out, Balance}, State) ->
-    pgsql:equery(State#state.ref, "SELECT * FROM sync_session_data($1, $2, $3, $4)",
-        [SID, In, Out, Balance]),
+handle_cast({interim_session, UserName, SID, TimeStamp, In, Out, Balance}, State) ->
+    pgsql:equery(State#state.ref, "SELECT * FROM interim_session($1, $2, $3, $4, $5, $6)",
+        [UserName, SID, TimeStamp, In, Out, Balance]),
     {noreply, State};
 handle_cast(_Request, State) ->
     {noreply, State}.
@@ -132,5 +132,5 @@ terminate(_Reason, State) ->
     pgsql:close(State#state.ref),
     netspire_hooks:delete(backend_fetch_account, ?MODULE, fetch_account),
     netspire_hooks:delete(backend_start_session, ?MODULE, start_session),
-    netspire_hooks:delete(backend_stop_session, ?MODULE, stop_session),
-    netspire_hooks:delete(backend_sync_session, ?MODULE, sync_session_data).
+    netspire_hooks:delete(backend_interim_session, ?MODULE, interim_session),
+    netspire_hooks:delete(backend_stop_session, ?MODULE, stop_session).
