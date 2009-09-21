@@ -52,61 +52,31 @@ stop() ->
     supervisor:delete_child(netspire_sup, ?MODULE).
 
 lookup_account(_Value, _Request, UserName, _Client) ->
-    gen_server:call(?MODULE, {lookup_account, UserName}).
-
-accounting_request(Response, Type, Request, Client) ->
-    gen_server:call(?MODULE, {accounting_request, Response, Type, Request, Client}).
-
-handle_packet(SrcIP, Pdu) ->
-    gen_server:cast(?MODULE, {netflow, Pdu, SrcIP}).
-
-prepare_session(Response, Request, {Balance, Plan}, _Client) ->
-    UserName = radius:attribute_value(?USER_NAME, Request),
-    IP = radius:attribute_value(?FRAMED_IP_ADDRESS, Response),
-    Timeout = gen_module:get_option(?MODULE, session_timeout, ?SESSION_TIMEOUT),
-    Data = #data{tariff = list_to_atom(Plan), balance = Balance},
-    radius_sessions:prepare(UserName, IP, Timeout, Data),
-    Response.
-
-%%
-%% Internal functions
-%%
-
-init([_Options]) ->
-    radius_sessions:init_mnesia(),
-    netspire_netflow:add_packet_handler(?MODULE, []),
-    netspire_hooks:add(radius_acct_lookup, ?MODULE, lookup_account),
-    netspire_hooks:add(radius_access_accept, ?MODULE, prepare_session, 200),
-    netspire_hooks:add(radius_acct_request, ?MODULE, accounting_request),
-    {ok, _} = timer:send_interval(?EXPIRE_SESSIONS_INTERVAL, self(), expire_sessions),
-    {ok, no_state}.
-
-handle_call({lookup_account, UserName}, _From, State) ->
     case radius_sessions:is_exist(UserName) of
         false ->
             case netspire_hooks:run_fold(backend_fetch_account, undefined, [UserName]) of
                 {ok, Data} ->
                     Response = {ok, Data},
-                    {reply, {stop, Response}, State};
+                    {stop, Response};
                 undefined ->
-                    {reply, {stop, undefined}, State}
+                    {stop, undefined}
             end;
         true ->
-            {reply, {stop, undefined}, State}
-    end;
-handle_call({accounting_request, _Response, ?ACCT_START, Request, Client}, _From, State) ->
+            {stop, undefined}
+    end.
+
+accounting_request(_Response, ?ACCT_START, Request, Client) ->
     UserName = radius:attribute_value(?USER_NAME, Request),
     SID = radius:attribute_value(?ACCT_SESSION_ID, Request),
     Timeout = gen_module:get_option(?MODULE, session_timeout, ?SESSION_TIMEOUT),
     ExpiresAt = netspire_util:timestamp() + Timeout,
     F = fun(S) -> S#session{nas_spec = Client} end,
-    Reply = #radius_packet{code = ?ACCT_RESPONSE},
     radius_sessions:start(UserName, SID, ExpiresAt, F),
     netspire_hooks:run(backend_start_session, [UserName, SID, now()]),
-    {reply, Reply, State};
-handle_call({accounting_request, _Response, ?ACCT_STOP, Request, _Client}, _From, State) ->
+    #radius_packet{code = ?ACCT_RESPONSE};
+
+accounting_request(_Response, ?ACCT_STOP, Request, _Client) ->
     SID = radius:attribute_value(?ACCT_SESSION_ID, Request),
-    Reply = #radius_packet{code = ?ACCT_RESPONSE},
     UserName = radius:attribute_value(?USER_NAME, Request),
     case radius_sessions:is_exist(UserName) of
         true ->
@@ -126,12 +96,12 @@ handle_call({accounting_request, _Response, ?ACCT_STOP, Request, _Client}, _From
             end;
         false -> ok
     end,
-    {reply, Reply, State};
-handle_call({accounting_request, _Response, ?INTERIM_UPDATE, Request, _Client}, _From, State) ->
+    #radius_packet{code = ?ACCT_RESPONSE};
+
+accounting_request(_Response, ?INTERIM_UPDATE, Request, _Client) ->
     SID = radius:attribute_value(?ACCT_SESSION_ID, Request),
     Timeout = gen_module:get_option(?MODULE, session_timeout, ?SESSION_TIMEOUT),
     ExpiresAt = netspire_util:timestamp() + Timeout,
-    Reply = #radius_packet{code = ?ACCT_RESPONSE},
     radius_sessions:interim(SID, ExpiresAt),
     case radius_sessions:fetch(SID) of
         [S] ->
@@ -145,9 +115,34 @@ handle_call({accounting_request, _Response, ?INTERIM_UPDATE, Request, _Client}, 
                                 Data#data.amount]);
         _ -> ok
     end,
-    {reply, Reply, State};
+    #radius_packet{code = ?ACCT_RESPONSE}.
+
+prepare_session(Response, Request, {Balance, Plan}, _Client) ->
+    UserName = radius:attribute_value(?USER_NAME, Request),
+    IP = radius:attribute_value(?FRAMED_IP_ADDRESS, Response),
+    Timeout = gen_module:get_option(?MODULE, session_timeout, ?SESSION_TIMEOUT),
+    Data = #data{tariff = list_to_atom(Plan), balance = Balance},
+    radius_sessions:prepare(UserName, IP, Timeout, Data),
+    Response.
+
+handle_packet(SrcIP, Pdu) ->
+    gen_server:cast(?MODULE, {netflow, Pdu, SrcIP}).
+
+%%
+%% Internal functions
+%%
+
+init([_Options]) ->
+    radius_sessions:init_mnesia(),
+    netspire_netflow:add_packet_handler(?MODULE, []),
+    netspire_hooks:add(radius_acct_lookup, ?MODULE, lookup_account),
+    netspire_hooks:add(radius_access_accept, ?MODULE, prepare_session, 200),
+    netspire_hooks:add(radius_acct_request, ?MODULE, accounting_request),
+    {ok, _} = timer:send_interval(?EXPIRE_SESSIONS_INTERVAL, self(), expire_sessions),
+    {ok, no_state}.
+
 handle_call(stop, _From, State) ->
-        {stop, normal, ok, State};
+    {stop, normal, ok, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
