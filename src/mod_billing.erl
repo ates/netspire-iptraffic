@@ -27,7 +27,7 @@
 -define(INTERIM_UPDATE, 3).
 
 -define(SESSION_TIMEOUT, 120000).
--define(EXPIRE_SESSIONS_INTERVAL, 50000).
+-define(EXPIRE_SESSIONS_INTERVAL, 5000).
 
 -record(data, {tariff, balance = 0.0, amount = 0.0, octets_in = 0, octets_out = 0}).
 
@@ -136,7 +136,7 @@ handle_call({accounting_request, _Response, ?INTERIM_UPDATE, Request, _Client}, 
     case radius_sessions:fetch(SID) of
         [S] ->
             Data = S#session.data,
-            netspire_hooks:run(backend_interim_session, [
+            netspire_hooks:run(backend_sync_session, [
                                 S#session.username,
                                 SID,
                                 now(),

@@ -54,14 +54,14 @@ DECLARE
     _acct_id INTEGER;
 BEGIN
     SELECT account_id INTO _acct_id FROM radius_sessions WHERE sid = $2;
-    PERFORM interim_session($1, $2, $3, $4, $5, $6);
+    PERFORM sync_session($1, $2, $3, $4, $5, $6);
     UPDATE accounts SET balance = balance - $6 WHERE id = _acct_id;
     UPDATE radius_sessions SET finished_at = $3, expired = $7 WHERE sid = $2 AND finished_at IS NULL AND account_id = (SELECT id FROM accounts WHERE login ILIKE $1);
     RETURN 1;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION interim_session(VARCHAR, VARCHAR, TIMESTAMP, BIGINT, BIGINT, FLOAT) RETURNS INTEGER AS $$
+CREATE OR REPLACE FUNCTION sync_session(VARCHAR, VARCHAR, TIMESTAMP, BIGINT, BIGINT, FLOAT) RETURNS INTEGER AS $$
 DECLARE
     _id INTEGER;
     result INTEGER;
