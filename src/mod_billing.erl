@@ -115,7 +115,13 @@ accounting_request(_Response, ?INTERIM_UPDATE, Request, _Client) ->
 
 prepare_session(Response, Request, {Balance, Plan}, _Client) ->
     UserName = radius:attribute_value(?USER_NAME, Request),
-    IP = radius:attribute_value(?FRAMED_IP_ADDRESS, Response),
+    IP = case radius:attribute_value(?FRAMED_IP_ADDRESS, Response) of
+        Term when is_tuple(Term) ->
+            Term;
+        Term ->
+            {ok, Address} = inet_parse:address(Term),
+            Address
+    end,
     Timeout = gen_module:get_option(?MODULE, session_timeout, ?SESSION_TIMEOUT),
     Data = #data{tariff = list_to_atom(Plan), balance = Balance},
     radius_sessions:prepare(UserName, IP, Timeout, Data),
