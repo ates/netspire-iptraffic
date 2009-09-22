@@ -7,5 +7,5 @@ compile:
 	$(ERL) $(EFLAGS) -make
 
 clean:
-	rm -rf ebin erl_crash.dump
-	find . -name "*~" -delete
+	rm -f erl_crash.dump
+	find . -name "*~" -exec rm -f {} \;
