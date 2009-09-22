@@ -22,10 +22,6 @@
 -include("netflow/netflow_v5.hrl").
 -include_lib("stdlib/include/qlc.hrl").
 
--define(ACCT_START, 1).
--define(ACCT_STOP, 2).
--define(INTERIM_UPDATE, 3).
-
 -define(SESSION_TIMEOUT, 300).
 -define(EXPIRE_SESSIONS_INTERVAL, 60000).
 
