@@ -26,8 +26,8 @@
 -define(ACCT_STOP, 2).
 -define(INTERIM_UPDATE, 3).
 
--define(SESSION_TIMEOUT, 120000).
--define(EXPIRE_SESSIONS_INTERVAL, 5000).
+-define(SESSION_TIMEOUT, 300).
+-define(EXPIRE_SESSIONS_INTERVAL, 60000).
 
 -record(data, {tariff, balance = 0.0, amount = 0.0, octets_in = 0, octets_out = 0}).
 
