@@ -64,7 +64,6 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION sync_session(VARCHAR, VARCHAR, TIMESTAMP, BIGINT, BIGINT, FLOAT) RETURNS INTEGER AS $$
 DECLARE
     _id INTEGER;
-    result INTEGER;
 BEGIN
     SELECT id INTO _id FROM radius_sessions WHERE sid = $2;
     UPDATE radius_sessions SET updated_at = $3 WHERE sid = $2 AND account_id = (SELECT id FROM accounts WHERE login ILIKE $1);
