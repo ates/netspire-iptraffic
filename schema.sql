@@ -38,18 +38,16 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION start_session(VARCHAR, VARCHAR, TIMESTAMP) RETURNS BOOLEAN AS $$
+CREATE OR REPLACE FUNCTION start_session(VARCHAR, VARCHAR, TIMESTAMP) RETURNS VOID AS $$
 DECLARE
     acct_id integer;
 BEGIN
     SELECT id INTO acct_id FROM accounts WHERE login ILIKE $1;
     INSERT INTO radius_sessions(account_id, sid, started_at) VALUES (acct_id, $2, $3);
-
-    RETURN TRUE;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION stop_session(VARCHAR, VARCHAR, TIMESTAMP, BIGINT, BIGINT, FLOAT, BOOLEAN) RETURNS INTEGER AS $$
+CREATE OR REPLACE FUNCTION stop_session(VARCHAR, VARCHAR, TIMESTAMP, BIGINT, BIGINT, FLOAT, BOOLEAN) RETURNS VOID AS $$
 DECLARE
     _acct_id INTEGER;
 BEGIN
@@ -57,7 +55,6 @@ BEGIN
     PERFORM sync_session($1, $2, $3, $4, $5, $6);
     UPDATE accounts SET balance = balance - $6 WHERE id = _acct_id;
     UPDATE radius_sessions SET finished_at = $3, expired = $7 WHERE sid = $2 AND finished_at IS NULL AND account_id = (SELECT id FROM accounts WHERE login ILIKE $1);
-    RETURN 1;
 END;
 $$ LANGUAGE plpgsql;
 
