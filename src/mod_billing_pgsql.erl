@@ -66,9 +66,10 @@ init([_Options]) ->
     {ok, #state{}}.
 
 process_fetch_account_result(Result) ->
-    F = fun(List) ->
-            {_, _, _, Name, Value} = List,
-            {binary_to_list(Name), binary_to_list(Value)}
+    F = fun({_, _, _, null, null}) ->
+                undefined;
+            ({_, _, _, Name, Value}) ->
+                {binary_to_list(Name), binary_to_list(Value)}
     end,
     case Result of
         {ok, _Columns, Rows} ->
@@ -77,7 +78,7 @@ process_fetch_account_result(Result) ->
                     undefined;
                 Res ->
                     {Password, Balance, Plan, _, _} = lists:nth(1, Res),
-                    Attrs = lists:map(F, Res),
+                    Attrs = lists:filter(fun(E) -> E /= undefined end, lists:map(F, Res)),
                     {ok, {binary_to_list(Password), Attrs, {Balance, binary_to_list(Plan)}}}
             end;
         _ -> undefined
