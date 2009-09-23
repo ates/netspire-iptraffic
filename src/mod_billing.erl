@@ -123,7 +123,7 @@ prepare_session(Response, Request, {Balance, Plan}, _Client) ->
             Address
     end,
     Timeout = gen_module:get_option(?MODULE, session_timeout, ?SESSION_TIMEOUT),
-    Data = #data{tariff = list_to_atom(Plan), balance = Balance},
+    Data = #data{tariff = Plan, balance = Balance},
     radius_sessions:prepare(UserName, IP, Timeout, Data),
     Response.
 
@@ -134,39 +134,43 @@ handle_packet(SrcIP, Pdu) ->
 %% Internal functions
 %%
 
-init([_Options]) ->
-    radius_sessions:init_mnesia(),
-    netspire_netflow:add_packet_handler(?MODULE, []),
-    netspire_hooks:add(radius_acct_lookup, ?MODULE, lookup_account),
-    netspire_hooks:add(radius_access_accept, ?MODULE, prepare_session, 200),
-    netspire_hooks:add(radius_acct_request, ?MODULE, accounting_request),
-    {ok, _} = timer:send_interval(?EXPIRE_SESSIONS_INTERVAL, self(), expire_sessions),
-    {ok, no_state}.
-
-handle_call(stop, _From, State) ->
-    {stop, normal, ok, State};
-handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
+init([Options]) ->
+    TariffsConfig = proplists:get_value(tariffs_config, Options, []),
+    case iptraffic_tariffs:init(TariffsConfig) of
+        ok ->
+            radius_sessions:init_mnesia(),
+            netspire_netflow:add_packet_handler(?MODULE, []),
+            netspire_hooks:add(radius_acct_lookup, ?MODULE, lookup_account),
+            netspire_hooks:add(radius_access_accept, ?MODULE, prepare_session, 200),
+            netspire_hooks:add(radius_acct_request, ?MODULE, accounting_request),
+            {ok, _} = timer:send_interval(?EXPIRE_SESSIONS_INTERVAL, self(), expire_sessions),
+            {ok, no_state};
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 extract_netflow_fields(Packet) ->
-    {_H, Records} = Packet,
+    {Header, Records} = Packet,
+    Time = Header#nfh_v5.unix_secs,
     F = fun(R) ->
             SrcIP = netspire_util:int_to_ip4(R#nfrec_v5.src_addr),
             DstIP = netspire_util:int_to_ip4(R#nfrec_v5.dst_addr),
+            SrcPort = R#nfrec_v5.src_port,
+            DstPort = R#nfrec_v5.dst_port,
+            Proto = R#nfrec_v5.prot,
             Octets = R#nfrec_v5.d_octets,
-            {SrcIP, DstIP, Octets}
+            {Time, SrcIP, DstIP, SrcPort, DstPort, Proto, Octets}
     end,
     lists:map(F, Records).
 
 handle_netflow_records(Flows) when is_list(Flows) ->
     lists:foreach(fun(F) -> handle_netflow_records(F) end, Flows);
 
-handle_netflow_records({SrcIP, DstIP, Octets}) ->
+handle_netflow_records({_, SrcIP, DstIP, _, _, _, Octets} = NetFlow) ->
     case fetch_matching_session(SrcIP, DstIP) of
         {error, _Reason} -> ok;
         {ok, {Direction, Session}} ->
-            case apply_tariff_plan(Session, Direction, Octets) of
+            case apply_tariff_plan(Session, NetFlow) of
                 {ok, NewBalance, Amount} when NewBalance > 0 ->
                     update_session_data(Session, Octets, Direction, Amount);
                 {ok, NewBalance, Amount} when NewBalance =< 0 ->
@@ -194,16 +198,14 @@ update_session_data(Session, Octets, Direction, Amount) ->
     end,
     radius_sessions:update(Session#session.id, Fun).
 
-apply_tariff_plan(Session, Direction, Octets) ->
+apply_tariff_plan(Session, NetFlow) ->
     Data = Session#session.data,
     Tariff = Data#data.tariff,
     Balance = Data#data.balance,
-    Amount = try
-        erlang:apply(Tariff, calculate, [Direction, Octets])
-    catch
-        _:Reason ->
-            ?ERROR_MSG("An error occured while running tariff ~p: ~p~n", [Tariff, Reason])
-    end,
+    {Time, SrcIP, DstIP, SrcPort, DstPort, Proto, Octets} = NetFlow,
+    {ok, {_, _, Cost}} = iptraffic_tariffs:match(
+            Tariff, Time, SrcIP, DstIP, SrcPort, DstPort, Proto),
+    Amount = Octets / 1024 / 1024 * Cost,
     NewBalance = Balance - (Data#data.amount + Amount),
     {ok, NewBalance, Amount}.
 
@@ -230,6 +232,12 @@ handle_cast({netflow, Pdu, _SrcIP}, State) ->
     {noreply, State};
 handle_cast(_Request, State) ->
     {noreply, State}.
+
+handle_call(stop, _From, State) ->
+    {stop, normal, ok, State};
+handle_call(_Request, _From, State) ->
+    Reply = ok,
+    {reply, Reply, State}.
 
 handle_info(expire_sessions, State) ->
     case radius_sessions:expire() of
