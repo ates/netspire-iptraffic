@@ -1,4 +1,4 @@
--module(mod_billing_pgsql).
+-module(mod_iptraffic_pgsql).
 
 -behaviour(gen_module).
 -behaviour(gen_server).

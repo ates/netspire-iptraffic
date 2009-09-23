@@ -1,4 +1,4 @@
--module(mod_billing).
+-module(mod_iptraffic).
 
 -behaviour(gen_module).
 -behaviour(gen_server).
