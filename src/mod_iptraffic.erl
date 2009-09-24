@@ -170,6 +170,7 @@ handle_netflow_records({_, SrcIP, DstIP, _, _, _, Octets} = NetFlow) ->
     case fetch_matching_session(SrcIP, DstIP) of
         {error, _Reason} -> ok;
         {ok, {Direction, Session}} ->
+            netspire_hooks:run(matched_session, [Session, NetFlow]),
             case apply_tariff_plan(Session, NetFlow) of
                 {ok, NewBalance, Amount} when NewBalance > 0 ->
                     update_session_data(Session, Octets, Direction, Amount);
@@ -203,8 +204,10 @@ apply_tariff_plan(Session, NetFlow) ->
     Tariff = Data#data.tariff,
     Balance = Data#data.balance,
     {Time, SrcIP, DstIP, SrcPort, DstPort, Proto, Octets} = NetFlow,
+    {_, Time1} = calendar:seconds_to_daystime(Time),
+    TimeSec = calendar:time_to_seconds(Time1),
     {ok, {_, _, Cost}} = iptraffic_tariffs:match(
-            Tariff, Time, SrcIP, DstIP, SrcPort, DstPort, Proto),
+            Tariff, TimeSec, SrcIP, DstIP, SrcPort, DstPort, Proto),
     Amount = Octets / 1024 / 1024 * Cost,
     NewBalance = Balance - (Data#data.amount + Amount),
     {ok, NewBalance, Amount}.
