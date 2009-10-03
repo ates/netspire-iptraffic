@@ -18,6 +18,7 @@
         {any, 0.7}
      ]}]}.
 
+%% First matching rule wins
 {classes,
     [{"Local", "All Day", [
         [{src, [{net, {"10.10.0.0", "255.255.0.0"}}]},
