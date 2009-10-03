@@ -6,11 +6,14 @@
     [{"Ultimate", [
         {"Incoming HTTP", 0.3},
         {"Incoming", 0.8},
+        {"Outgoing", 0.7},
+        {"Local", 0.7},
         {any, 0.9}
      ]},
      {"Daylight", [
         {"Incoming HTTP", 0.5},
         {"Incoming", 1},
+        {"Outgoing", 0.7},
         {"Local", 6},
         {any, 0.7}
      ]}]}.

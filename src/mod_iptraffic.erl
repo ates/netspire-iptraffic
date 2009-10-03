@@ -154,39 +154,45 @@ process_netflow_packet({H, Records}) ->
     lists:foreach(Fun, Records).
 
 process_netflow_record(H, Rec) ->
-    Args = build_iptraffic_args(H, Rec),
-    #ipt_args{src_ip = SrcIP, dst_ip = DstIP} = Args,
-    case match_session(SrcIP, DstIP) of
-        {ok, {Direction, Session}} ->
-            NewArgs = Args#ipt_args{dir = Direction},
-            do_accounting(Session, NewArgs);
-        _ ->
-            ok
+    case build_iptraffic_args(H, Rec) of
+        {ok, Args} ->
+            #ipt_args{src_ip = SrcIP, dst_ip = DstIP} = Args,
+            case match_session(SrcIP, DstIP) of
+                {ok, {Direction, Session}} ->
+                    NewArgs = Args#ipt_args{dir = Direction},
+                    do_accounting(Session, NewArgs);
+                _ ->
+                    ok
+            end;
+        Error ->
+            Error
     end.
 
 build_iptraffic_args(H, Rec) when is_record(H, nfh_v5) ->
     {_, Time} = calendar:seconds_to_daystime(H#nfh_v5.unix_secs),
-    #ipt_args{
-        sec = calendar:time_to_seconds(Time),
-        src_ip = netspire_util:int_to_ip4(Rec#nfrec_v5.src_addr),
-        dst_ip = netspire_util:int_to_ip4(Rec#nfrec_v5.dst_addr),
-        src_port = Rec#nfrec_v5.src_port,
-        dst_port = Rec#nfrec_v5.dst_port,
-        proto = Rec#nfrec_v5.prot,
-        octets = Rec#nfrec_v5.d_octets
-    };
+    Args = #ipt_args{
+                sec = calendar:time_to_seconds(Time),
+                src_ip = netspire_util:int_to_ip4(Rec#nfrec_v5.src_addr),
+                dst_ip = netspire_util:int_to_ip4(Rec#nfrec_v5.dst_addr),
+                src_port = Rec#nfrec_v5.src_port,
+                dst_port = Rec#nfrec_v5.dst_port,
+                proto = Rec#nfrec_v5.prot,
+                octets = Rec#nfrec_v5.d_octets
+    },
+    {ok, Args};
 build_iptraffic_args(H, _FlowSet) when is_record(H, nfh_v9) ->
-    ?WARNING_MSG("NetFlow v9 is not supported yet~n", []).
+    ?WARNING_MSG("NetFlow v9 is not supported yet~n", []),
+    {error, not_supported}.
 
 do_accounting(Session, Args) ->
     Data = Session#session.data,
-    Plan = Data#data.plan,  
+    Plan = Data#data.plan,
     case iptraffic_tariffs:match(Plan, Session, Args) of
         {ok, {Plan, _Rule, Cost} = MatchResult} ->
-            netspire_hooks:run(matched_session, [Session, Args, MatchResult]),
             Amount = Args#ipt_args.octets / 1024 / 1024 * Cost,
             NewBalance = Data#data.balance - (Data#data.amount + Amount),
             update_session_data(Session, Args, Amount),
+            netspire_hooks:run(matched_session, [Session, Args, MatchResult, Amount]),
             if
                 NewBalance =< 0 ->
                     netspire_hooks:run(disconnect_client, [Session]);
@@ -210,27 +216,26 @@ match_session(SrcIP, DstIP) ->
         [S] when S#session.ip == SrcIP ->
             {ok, {out, S}};
         [] ->
-            ?WARNING_MSG("No active sessions matching flow src/dst: ~p/~p~n", [SrcIP, DstIP]),
+            ?WARNING_MSG("No active sessions matching flow src/dst: ~s/~s~n",
+                [inet_parse:ntoa(SrcIP), inet_parse:ntoa(DstIP)]),
             {error, no_matches};
         _ ->
-            ?WARNING_MSG("Ambiguous session match for flow src/dst: ~p/~p~n", [SrcIP, DstIP]),
+            ?WARNING_MSG("Ambiguous session match for flow src/dst: ~s/~s~n",
+                [inet_parse:ntoa(SrcIP), inet_parse:ntoa(DstIP)]),
             {error, ambiguous_match}
     end.
 
 update_session_data(Session, Args, Amount) ->
     Fun = fun(S) ->
-        Direction = Args#ipt_args.dir,
-        Octets = Args#ipt_args.octets,
         Data = S#session.data,
-        NewIn = Data#data.octets_in + Octets,
-        NewOut = Data#data.octets_out + Octets,
-        NewAmount = Data#data.amount + Amount,
+        #ipt_args{dir = Direction, octets = Octets} = Args,
+        NewAmount = Amount + Data#data.amount,
         NewData =
 			case Direction of
             	in ->
-                	Data#data{amount = NewAmount, octets_in = NewIn};
+                	Data#data{amount = NewAmount, octets_in = Data#data.octets_in + Octets};
             	out ->
-                	Data#data{amount = NewAmount, octets_out = NewOut}
+                	Data#data{amount = NewAmount, octets_out = Data#data.octets_out + Octets}
         	end,
         S#session{data = NewData}
     end,
@@ -250,12 +255,8 @@ handle_call(_Request, _From, State) ->
 
 handle_info(expire_sessions, State) ->
 	Fun = fun(S) ->
-                Data = S#session.data,
-                SID = S#session.id,
-                UserName = S#session.username,
-                In = Data#data.octets_in,
-                Out = Data#data.octets_out,
-                Amount = Data#data.amount,
+                #session{id = SID, data = Data, username = UserName} = S,
+                #data{octets_in = In, octets_out = Out, amount = Amount} = Data,
                 netspire_hooks:run(backend_stop_session, [UserName, SID, now(), In, Out, Amount, true]),
                 radius_sessions:purge(S)
 			end,

@@ -33,10 +33,8 @@ match(Plan, Session, Args) ->
 get_cost(Plan, _Session, Rule) ->
     Key = {Plan, Rule#netflow_rule.class},
     case ets:lookup(iptraffic_tariffs, Key) of
-        [{{Plan, _Class}, Cost}] ->
-            {ok, {Plan, Rule, Cost}};
-        _ ->
-            {error, no_matches}
+        [{{Plan, _Class}, Cost}] -> {ok, {Plan, Rule, Cost}};
+        _ -> {error, no_matching_plans}
     end.
 
 match_class(Args) ->
@@ -44,7 +42,7 @@ match_class(Args) ->
     QC = qlc:cursor(QH),
     Result = case qlc:next_answers(QC, 1) of
         [Rule] -> {ok, Rule};
-        _ -> {error, no_matches}
+        _ -> {error, no_matching_rules}
     end,
     qlc:delete_cursor(QC),
     Result.
@@ -105,7 +103,7 @@ write_rule(Class, Period, Rule, Idx) ->
     DstRule = proplists:get_value(dst, Rule),
     {SrcNet, SrcMask, SrcPort} = expand_net(SrcRule),
     {DstNet, DstMask, DstPort} = expand_net(DstRule),
-    Proto = proplists:get_value(proto, Rule, tcp),
+    Proto = proplists:get_value(proto, Rule, any),
     Rec = #netflow_rule{
         idx = Idx,
         class = Class,
@@ -149,10 +147,14 @@ list_to_time(L) ->
 list_to_seconds(L) ->
     calendar:time_to_seconds(list_to_time(L)).
 
+proto(icmp) ->
+    1;
 proto(tcp) ->
     6;
 proto(udp) ->
-    17.
+    17;
+proto(Proto) ->
+    Proto.
 
 net_match(Network, NetworkMask, IP) when is_integer(NetworkMask) ->
     IPInt = netspire_util:ip4_to_int(IP),
