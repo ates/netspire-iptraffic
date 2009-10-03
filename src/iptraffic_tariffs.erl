@@ -1,53 +1,66 @@
 -module(iptraffic_tariffs).
 
--export([init/1, match/7]).
+-export([init/1, match/3]).
 
 -include("netspire.hrl").
+-include("iptraffic.hrl").
 -include_lib("stdlib/include/qlc.hrl").
 
--record(iptraffic_class, {name, time, rules = []}).
--record(netflow_rule, {src_net, src_mask, src_port, dst_net, dst_mask, dst_port, proto}).
+-record(netflow_rule, {
+    idx,
+    class,
+    time,
+    src_net,
+    src_mask,
+    src_port,
+    dst_net,
+    dst_mask,
+    dst_port,
+    proto
+}).
 
 init(File) ->
-    ets:new(tariffs, [named_table, bag]),
+    ets:new(iptraffic_tariffs, [named_table]),
+    ets:new(iptraffic_rules, [named_table, bag, {keypos, 2}]),
     load_file(File).
 
-match(Plan, Time, SrcIP, DstIP, SrcPort, DstPort, Proto) ->
-    QH = qlc:q([T || T <- ets:table(tariffs),
-        match_plan(T, Plan, Time, SrcIP, DstIP, SrcPort, DstPort, Proto)]),
-    QC = qlc:cursor(QH),
-    Result = case qlc:next_answers(QC, 1) of
-        [Match] ->
-            {ok, Match};
+match(Plan, Session, Args) ->
+    case match_class(Args) of
+        {ok, Rule} -> get_cost(Plan, Session, Rule);
+        Error -> Error
+    end.
+
+get_cost(Plan, _Session, Rule) ->
+    Key = {Plan, Rule#netflow_rule.class},
+    case ets:lookup(iptraffic_tariffs, Key) of
+        [{{Plan, _Class}, Cost}] ->
+            {ok, {Plan, Rule, Cost}};
         _ ->
             {error, no_matches}
+    end.
+
+match_class(Args) ->
+    QH = qlc:q([Rule || Rule <- ets:table(iptraffic_rules), match_rule(Rule, Args)]),
+    QC = qlc:cursor(QH),
+    Result = case qlc:next_answers(QC, 1) of
+        [Rule] -> {ok, Rule};
+        _ -> {error, no_matches}
     end,
     qlc:delete_cursor(QC),
     Result.
-match_plan({Name, Class, _}, Plan, Time, SrcIP, DstIP, SrcPort, DstPort, Proto) ->
-    case Name == Plan of
-        true ->
-            match_class(Class, Time, SrcIP, DstIP, SrcPort, DstPort, Proto);
-        _ ->
-            false
-    end.
 
-match_class(any, _, _, _, _, _, _) ->
+match_rule(any, _) ->
     true;
-match_class(Class, Time, SrcIP, DstIP, SrcPort, DstPort, Proto) ->
-    Fun = fun(Rule) ->
-        match_rule(Rule, SrcIP, DstIP, SrcPort, DstPort, Proto)
-    end,
-    match_time(Class#iptraffic_class.time, Time) andalso
-    lists:any(Fun, Class#iptraffic_class.rules).
+match_rule(Rule, Args) ->
+    match_time(Rule#netflow_rule.time, Args#ipt_args.sec) andalso
+    net_match(Rule#netflow_rule.src_net, Rule#netflow_rule.src_mask, Args#ipt_args.src_ip) andalso
+    net_match(Rule#netflow_rule.dst_net, Rule#netflow_rule.dst_mask, Args#ipt_args.dst_ip) andalso
+    (Rule#netflow_rule.src_port == Args#ipt_args.src_port orelse Rule#netflow_rule.src_port == any) andalso
+    (Rule#netflow_rule.src_port == Args#ipt_args.dst_port orelse Rule#netflow_rule.dst_port == any) andalso
+    (Rule#netflow_rule.proto == Args#ipt_args.proto orelse Rule#netflow_rule.proto == any).
 
-match_rule(Rule, SrcIP, DstIP, SrcPort, DstPort, Proto) ->
-    net_match(Rule#netflow_rule.src_net, Rule#netflow_rule.src_mask, SrcIP) andalso
-    net_match(Rule#netflow_rule.dst_net, Rule#netflow_rule.dst_mask, DstIP) andalso
-    (Rule#netflow_rule.src_port == SrcPort orelse Rule#netflow_rule.src_port == any) andalso
-    (Rule#netflow_rule.src_port == DstPort orelse Rule#netflow_rule.dst_port == any) andalso
-    (Rule#netflow_rule.proto == Proto orelse Rule#netflow_rule.proto == any).
-
+match_time(any, _) ->
+    true;
 match_time({Start, End}, Time) ->
     Time >= Start andalso Time =< End.
 
@@ -55,51 +68,48 @@ load_file(File) ->
     ?INFO_MSG("Reading tariffs ~s~n", [File]),
     case file:consult(File) of
         {ok, Terms} ->
-            process_term(lists:reverse(Terms), [], [], []);
+            process_terms(Terms);
         {error, Reason} ->
             Msg = file:format_error(Reason),
             ?ERROR_MSG("Can't load file with tariffs ~s: ~s~n", [File, Msg]),
             {error, Reason}
     end.
 
-process_term([Term | Tail], Periods, Classes, Plans) ->
-    case Term of
-        {periods, Val} ->
-            Acc = read_period(Val, []),
-            process_term(Tail, Acc, Classes, Plans);
-        {classes, Val} ->
-            Acc = read_class(Val, Periods, []),
-            process_term(Tail, Periods, Acc, Plans);
-        {plans, Val} ->
-            read_plan(Val, Classes)
-    end.
+process_terms(Terms) ->
+    Periods = proplists:get_value(periods, Terms, []),
+    Classes = proplists:get_value(classes, Terms, []),
+    Plans = proplists:get_value(plans, Terms, []),
+    read_class(Classes, 0, read_time(Periods, [])),
+    read_plan(Plans).
 
-read_plan([], _Classes) ->
+read_plan([]) ->
     ok;
-read_plan([{Name, ClassLinks} | Tail], Classes) ->
+read_plan([{Name, ClassLinks} | Tail]) ->
     Fun = fun({ClassName, Cost}) ->
-        Class = proplists:get_value(ClassName, Classes, any),
-        {Name, Class, Cost}
+        {{Name, ClassName}, Cost}
     end,
     Records = lists:map(Fun, ClassLinks),
-    ets:insert(tariffs, Records),
-    read_plan(Tail, Classes).
+    ets:insert(iptraffic_tariffs, Records),
+    read_plan(Tail).
 
-read_class([], _Periods, Acc) ->
-    Acc;
-read_class([{Name, PeriodName, Rules} | Tail], Periods, Acc) ->
-    ExpandedRules = lists:map(fun expand_rule/1, Rules),
+read_class([], _, _) ->
+    ok;
+read_class([{Name, PeriodName, Rules} | Tail], Idx, Periods) ->
     Period = proplists:get_value(PeriodName, Periods, any),
-    ClassRec = #iptraffic_class{name = Name, time = Period, rules = ExpandedRules},
-    read_class(Tail, Periods, [{Name, ClassRec} | Acc]).
+    Fun = fun(Rule) -> write_rule(Name, Period, Rule, Idx) end,
+    lists:foreach(Fun, Rules),
+    read_class(Tail, Idx + 1, Periods).
 
-expand_rule(Rule) ->
+write_rule(Class, Period, Rule, Idx) ->
     SrcRule = proplists:get_value(src, Rule),
     DstRule = proplists:get_value(dst, Rule),
-    {SrcNet, SrcMask, SrcPort} = expand_net_rule(SrcRule),
-    {DstNet, DstMask, DstPort} = expand_net_rule(DstRule),
+    {SrcNet, SrcMask, SrcPort} = expand_net(SrcRule),
+    {DstNet, DstMask, DstPort} = expand_net(DstRule),
     Proto = proplists:get_value(proto, Rule, tcp),
-    #netflow_rule{
+    Rec = #netflow_rule{
+        idx = Idx,
+        class = Class,
+        time = Period,
         src_net = SrcNet,
         src_mask = SrcMask,
         src_port = SrcPort,
@@ -107,9 +117,10 @@ expand_rule(Rule) ->
         dst_mask = DstMask,
         dst_port = DstPort,
         proto = proto(Proto)
-    }.
+    },
+    ets:insert(iptraffic_rules, Rec).
 
-expand_net_rule(Rule) ->
+expand_net(Rule) ->
     {Addr, Mask} =
         case proplists:get_value(net, Rule) of
             {A, M} ->
@@ -124,12 +135,12 @@ expand_net_rule(Rule) ->
     Port = proplists:get_value(port, Rule, any),
     {Addr, Mask, Port}.
 
-read_period([], Acc) ->
+read_time([], Acc) ->
     lists:reverse(Acc);
-read_period([{Name, Frame} | Tail], Acc) ->
+read_time([{Name, Frame} | Tail], Acc) ->
     [Start, End] = string:tokens(Frame, "-"),
     Acc1 = [{Name, {list_to_seconds(Start), list_to_seconds(End)}} | Acc],
-    read_period(Tail, Acc1).
+    read_time(Tail, Acc1).
 
 list_to_time(L) ->
     [H, M, S] = string:tokens(L, ":"),
@@ -157,9 +168,8 @@ net_match(Network, NetworkMask, IP) when is_tuple(NetworkMask) ->
     IPInt = netspire_util:ip4_to_int(IP),
     NetworkInt = netspire_util:ip4_to_int(Network),
     MaskInt = netspire_util:ip4_to_int(NetworkMask),
-    Res = (IPInt band MaskInt),
     if
-        Res == NetworkInt ->
+        (IPInt band MaskInt) == NetworkInt ->
             true;
         true -> false
     end.

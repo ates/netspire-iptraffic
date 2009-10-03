@@ -20,12 +20,12 @@
 -include("netspire_radius.hrl").
 -include("radius/radius.hrl").
 -include("netflow/netflow_v5.hrl").
+-include("netflow/netflow_v9.hrl").
+-include("iptraffic.hrl").
 -include_lib("stdlib/include/qlc.hrl").
 
 -define(SESSION_TIMEOUT, 300).
 -define(EXPIRE_SESSIONS_INTERVAL, 60000).
-
--record(data, {tariff, balance = 0.0, amount = 0.0, octets_in = 0, octets_out = 0}).
 
 start(Options) ->
     ?INFO_MSG("Starting dynamic module ~p~n", [?MODULE]),
@@ -46,6 +46,21 @@ stop() ->
     gen_server:call(?MODULE, stop),
     supervisor:terminate_child(netspire_sup, ?MODULE),
     supervisor:delete_child(netspire_sup, ?MODULE).
+
+init([Options]) ->
+    TariffsConfig = proplists:get_value(tariffs_config, Options, []),
+    case iptraffic_tariffs:init(TariffsConfig) of
+        ok ->
+            radius_sessions:init_mnesia(),
+            netspire_netflow:add_packet_handler(?MODULE, []),
+            netspire_hooks:add(radius_acct_lookup, ?MODULE, lookup_account),
+            netspire_hooks:add(radius_access_accept, ?MODULE, prepare_session, 200),
+            netspire_hooks:add(radius_acct_request, ?MODULE, accounting_request),
+            {ok, _TRef} = timer:send_interval(?EXPIRE_SESSIONS_INTERVAL, self(), expire_sessions),
+            {ok, no_state};
+        Error ->
+            {stop, Error}
+    end.
 
 lookup_account(_Value, _Request, UserName, _Client) ->
     case radius_sessions:is_exist(UserName) of
@@ -123,7 +138,7 @@ prepare_session(Response, Request, {Balance, Plan}, _Client) ->
             Address
     end,
     Timeout = gen_module:get_option(?MODULE, session_timeout, ?SESSION_TIMEOUT),
-    Data = #data{tariff = Plan, balance = Balance},
+    Data = #data{plan = Plan, balance = Balance},
     radius_sessions:prepare(UserName, IP, Timeout, Data),
     Response.
 
@@ -134,104 +149,95 @@ handle_packet(SrcIP, Pdu) ->
 %% Internal functions
 %%
 
-init([Options]) ->
-    TariffsConfig = proplists:get_value(tariffs_config, Options, []),
-    case iptraffic_tariffs:init(TariffsConfig) of
-        ok ->
-            radius_sessions:init_mnesia(),
-            netspire_netflow:add_packet_handler(?MODULE, []),
-            netspire_hooks:add(radius_acct_lookup, ?MODULE, lookup_account),
-            netspire_hooks:add(radius_access_accept, ?MODULE, prepare_session, 200),
-            netspire_hooks:add(radius_acct_request, ?MODULE, accounting_request),
-            {ok, _} = timer:send_interval(?EXPIRE_SESSIONS_INTERVAL, self(), expire_sessions),
-            {ok, no_state};
-        {error, Reason} ->
-            {error, Reason}
-    end.
+process_netflow_packet({H, Records}) ->
+    Fun = fun(Rec) -> process_netflow_record(H, Rec) end,
+    lists:foreach(Fun, Records).
 
-extract_netflow_fields(Packet) ->
-    {Header, Records} = Packet,
-    Time = Header#nfh_v5.unix_secs,
-    F = fun(R) ->
-            SrcIP = netspire_util:int_to_ip4(R#nfrec_v5.src_addr),
-            DstIP = netspire_util:int_to_ip4(R#nfrec_v5.dst_addr),
-            SrcPort = R#nfrec_v5.src_port,
-            DstPort = R#nfrec_v5.dst_port,
-            Proto = R#nfrec_v5.prot,
-            Octets = R#nfrec_v5.d_octets,
-            {Time, SrcIP, DstIP, SrcPort, DstPort, Proto, Octets}
-    end,
-    lists:map(F, Records).
-
-handle_netflow_records(Flows) when is_list(Flows) ->
-    lists:foreach(fun(F) -> handle_netflow_records(F) end, Flows);
-
-handle_netflow_records({_, SrcIP, DstIP, _, _, _, Octets} = NetFlow) ->
-    case fetch_matching_session(SrcIP, DstIP) of
-        {error, _Reason} -> ok;
+process_netflow_record(H, Rec) ->
+    Args = build_iptraffic_args(H, Rec),
+    #ipt_args{src_ip = SrcIP, dst_ip = DstIP} = Args,
+    case match_session(SrcIP, DstIP) of
         {ok, {Direction, Session}} ->
-            netspire_hooks:run(matched_session, [Session, NetFlow]),
-            case apply_tariff_plan(Session, NetFlow) of
-                {ok, NewBalance, Amount} when NewBalance > 0 ->
-                    update_session_data(Session, Octets, Direction, Amount);
-                {ok, NewBalance, Amount} when NewBalance =< 0 ->
-                    netspire_hooks:run(disconnect_client, [Session]),
-                    update_session_data(Session, Octets, Direction, Amount);
-                {error, Reason} ->
-                    SID = Session#session.id,
-                    ?ERROR_MSG("Cannot calculate session ~s due ~p~n", [SID, Reason])
-            end
+            NewArgs = Args#ipt_args{dir = Direction},
+            do_accounting(Session, NewArgs);
+        _ ->
+            ok
     end.
 
-update_session_data(Session, Octets, Direction, Amount) ->
-    Fun = fun(S) ->
-        Data = S#session.data,
-        NewIn = Data#data.octets_in + Octets,
-        NewOut = Data#data.octets_out + Octets,
-        NewAmount = Data#data.amount + Amount,
-        NewData = case Direction of
-            in ->
-                Data#data{amount = NewAmount, octets_in = NewIn};
-            out ->
-                Data#data{amount = NewAmount, octets_out = NewOut}
-        end,
-        S#session{data = NewData}
-    end,
-    radius_sessions:update(Session#session.id, Fun).
+build_iptraffic_args(H, Rec) when is_record(H, nfh_v5) ->
+    {_, Time} = calendar:seconds_to_daystime(H#nfh_v5.unix_secs),
+    #ipt_args{
+        sec = calendar:time_to_seconds(Time),
+        src_ip = netspire_util:int_to_ip4(Rec#nfrec_v5.src_addr),
+        dst_ip = netspire_util:int_to_ip4(Rec#nfrec_v5.dst_addr),
+        src_port = Rec#nfrec_v5.src_port,
+        dst_port = Rec#nfrec_v5.dst_port,
+        proto = Rec#nfrec_v5.prot,
+        octets = Rec#nfrec_v5.d_octets
+    };
+build_iptraffic_args(H, _FlowSet) when is_record(H, nfh_v9) ->
+    ?WARNING_MSG("NetFlow v9 is not supported yet~n", []).
 
-apply_tariff_plan(Session, NetFlow) ->
+do_accounting(Session, Args) ->
     Data = Session#session.data,
-    Tariff = Data#data.tariff,
-    Balance = Data#data.balance,
-    {Time, SrcIP, DstIP, SrcPort, DstPort, Proto, Octets} = NetFlow,
-    {_, Time1} = calendar:seconds_to_daystime(Time),
-    TimeSec = calendar:time_to_seconds(Time1),
-    {ok, {_, _, Cost}} = iptraffic_tariffs:match(
-            Tariff, TimeSec, SrcIP, DstIP, SrcPort, DstPort, Proto),
-    Amount = Octets / 1024 / 1024 * Cost,
-    NewBalance = Balance - (Data#data.amount + Amount),
-    {ok, NewBalance, Amount}.
+    Plan = Data#data.plan,  
+    case iptraffic_tariffs:match(Plan, Session, Args) of
+        {ok, {Plan, _Rule, Cost} = MatchResult} ->
+            netspire_hooks:run(matched_session, [Session, Args, MatchResult]),
+            Amount = Args#ipt_args.octets / 1024 / 1024 * Cost,
+            NewBalance = Data#data.balance - (Data#data.amount + Amount),
+            update_session_data(Session, Args, Amount),
+            if
+                NewBalance =< 0 ->
+                    netspire_hooks:run(disconnect_client, [Session]);
+                true -> false
+            end;
+        {error, Reason} ->
+            SID = Session#session.id,
+            ?ERROR_MSG("Cannot process accounting for session ~s due ~p~n", [SID, Reason])
+    end.
 
-fetch_matching_session(SrcIP, DstIP) ->
+match_session(SrcIP, DstIP) ->
     F = fun() ->
             Q = qlc:q([X || X <- mnesia:table(session),
                 (X#session.ip == SrcIP orelse X#session.ip == DstIP) andalso
                  X#session.status == active]),
             qlc:e(Q)
-    end,
+    	end,
     case mnesia:activity(async_dirty, F) of
-        [S] when S#session.ip == DstIP -> {ok, {in, S}};
-        [S] when S#session.ip == SrcIP -> {ok, {out, S}};
+        [S] when S#session.ip == DstIP ->
+            {ok, {in, S}};
+        [S] when S#session.ip == SrcIP ->
+            {ok, {out, S}};
         [] ->
             ?WARNING_MSG("No active sessions matching flow src/dst: ~p/~p~n", [SrcIP, DstIP]),
-            {error, session_not_found};
+            {error, no_matches};
         _ ->
-            ?WARNING_MSG("Ambiguous session match for flow src/dst: ~p/~p~n", [SrcIP, DstIP])
+            ?WARNING_MSG("Ambiguous session match for flow src/dst: ~p/~p~n", [SrcIP, DstIP]),
+            {error, ambiguous_match}
     end.
 
-handle_cast({netflow, Pdu, _SrcIP}, State) ->
-    Result = extract_netflow_fields(Pdu),
-    handle_netflow_records(Result),
+update_session_data(Session, Args, Amount) ->
+    Fun = fun(S) ->
+        Direction = Args#ipt_args.dir,
+        Octets = Args#ipt_args.octets,
+        Data = S#session.data,
+        NewIn = Data#data.octets_in + Octets,
+        NewOut = Data#data.octets_out + Octets,
+        NewAmount = Data#data.amount + Amount,
+        NewData =
+			case Direction of
+            	in ->
+                	Data#data{amount = NewAmount, octets_in = NewIn};
+            	out ->
+                	Data#data{amount = NewAmount, octets_out = NewOut}
+        	end,
+        S#session{data = NewData}
+    end,
+    radius_sessions:update(Session#session.id, Fun).
+
+handle_cast({netflow, Packet, _SrcIP}, State) ->
+    process_netflow_packet(Packet),
     {noreply, State};
 handle_cast(_Request, State) ->
     {noreply, State}.
@@ -243,18 +249,20 @@ handle_call(_Request, _From, State) ->
     {reply, Reply, State}.
 
 handle_info(expire_sessions, State) ->
+	Fun = fun(S) ->
+                Data = S#session.data,
+                SID = S#session.id,
+                UserName = S#session.username,
+                In = Data#data.octets_in,
+                Out = Data#data.octets_out,
+                Amount = Data#data.amount,
+                netspire_hooks:run(backend_stop_session, [UserName, SID, now(), In, Out, Amount, true]),
+                radius_sessions:purge(S)
+			end,
     case radius_sessions:expire() of
         {ok, []} -> ok;
         {ok, Result} ->
-            lists:foreach(fun(S) ->
-                        Data = S#session.data,
-                        SID = S#session.id,
-                        UserName = S#session.username,
-                        In = Data#data.octets_in,
-                        Out = Data#data.octets_out,
-                        Amount = Data#data.amount,
-                        netspire_hooks:run(backend_stop_session, [UserName, SID, now(), In, Out, Amount, true]),
-                        radius_sessions:purge(S) end, Result)
+            lists:foreach(Fun, Result)
     end,
     {noreply, State};
 handle_info(_Request, State) ->
@@ -267,5 +275,4 @@ terminate(_Reason, _State) ->
     netspire_netflow:delete_packet_handler(?MODULE),
     netspire_hooks:delete(radius_acct_lookup, ?MODULE, lookup_account),
     netspire_hooks:delete(radius_access_accept, ?MODULE, prepare_session),
-    netspire_hooks:delete(radius_acct_request, ?MODULE, accounting_request),
-    ok.
+    netspire_hooks:delete(radius_acct_request, ?MODULE, accounting_request).
