@@ -158,9 +158,12 @@ process_netflow_record(H, Rec) ->
         {ok, Args} ->
             #ipt_args{src_ip = SrcIP, dst_ip = DstIP} = Args,
             case match_session(SrcIP, DstIP) of
-                {ok, {Direction, Session}} ->
-                    NewArgs = Args#ipt_args{dir = Direction},
-                    do_accounting(Session, NewArgs);
+                {ok, Matches} ->
+                    Fun = fun({Direction, Session}) ->
+                        NewArgs = Args#ipt_args{dir = Direction},
+                        do_accounting(Session, NewArgs)
+                    end,
+                    lists:foreach(Fun, Matches);
                 _ ->
                     ok
             end;
@@ -211,19 +214,23 @@ match_session(SrcIP, DstIP) ->
             qlc:e(Q)
     	end,
     case mnesia:activity(async_dirty, F) of
-        [S] when S#session.ip == DstIP ->
-            {ok, {in, S}};
-        [S] when S#session.ip == SrcIP ->
-            {ok, {out, S}};
         [] ->
             ?WARNING_MSG("No active sessions matching flow src/dst: ~s/~s~n",
                 [inet_parse:ntoa(SrcIP), inet_parse:ntoa(DstIP)]),
             {error, no_matches};
-        _ ->
-            ?WARNING_MSG("Ambiguous session match for flow src/dst: ~s/~s~n",
-                [inet_parse:ntoa(SrcIP), inet_parse:ntoa(DstIP)]),
-            {error, ambiguous_match}
+        Res when is_list(Res) ->
+            tag_with_direction(Res, SrcIP, DstIP, [])
     end.
+
+tag_with_direction([], _, _, Acc) ->
+    {ok, Acc};
+tag_with_direction([S | Tail], SrcIP, DstIP, Acc) ->
+    S1 = tag_with_direction(S, SrcIP, DstIP),
+    tag_with_direction(Tail, SrcIP, DstIP, [S1 | Acc]).
+tag_with_direction(S, _, DstIP) when S#session.ip == DstIP ->
+    {in, S};
+tag_with_direction(S, SrcIP, _) when S#session.ip == SrcIP ->
+    {out, S}.
 
 update_session_data(Session, Args, Amount) ->
     Fun = fun(S) ->
