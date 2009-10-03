@@ -4,18 +4,23 @@
 
 {plans,
     [{"Ultimate", [
-        {"Incoming HTTP", 0.3},
-        {"Incoming", 0.8},
-        {"Outgoing", 0.7},
-        {"Local", 0.7},
-        {any, 0.9}
+        {"Incoming HTTP Day", 1},
+        {"Incoming HTTP Night", 1},
+        {"Incoming Day", 1},
+        {"Incoming Night", 1},
+        {"Outgoing", 0},
+        {"Local", 0},
+        {any, 0}
      ]},
+
      {"Daylight", [
-        {"Incoming HTTP", 0.5},
-        {"Incoming", 1},
-        {"Outgoing", 0.7},
-        {"Local", 6},
-        {any, 0.7}
+        {"Incoming HTTP Day", 0.5},
+        {"Incoming HTTP Night", 1.7},
+        {"Incoming Day", 0.5},
+        {"Incoming Night", 2},
+        {"Outgoing", 0},
+        {"Local", 0},
+        {any, 0}
      ]}]}.
 
 %% First matching rule wins
@@ -24,13 +29,23 @@
         [{src, [{net, {"10.10.0.0", "255.255.0.0"}}]},
          {dst, [{net, {"10.10.0.0", "255.255.0.0"}}]}]]},
 
-     {"Incoming HTTP", "All Day", [
+     {"Incoming HTTP Day", "Day", [
          [{src, [{net, {"0.0.0.0", "0.0.0.0"}}, {port, 80}]},
           {dst, [{net, {"10.10.0.0", "255.255.255.0"}}]},
           {proto, tcp}
          ]]},
 
-     {"Incoming", "All Day", [
+     {"Incoming HTTP Night", "Night", [
+         [{src, [{net, {"0.0.0.0", "0.0.0.0"}}, {port, 80}]},
+          {dst, [{net, {"10.10.0.0", "255.255.255.0"}}]},
+          {proto, tcp}
+         ]]},
+
+     {"Incoming Day", "Day", [
+         [{src, [{net, {"0.0.0.0", "0.0.0.0"}}]},
+          {dst, [{net, {"10.10.0.0", "255.255.255.0"}}]}]]},
+
+     {"Incoming Night", "Night", [
          [{src, [{net, {"0.0.0.0", "0.0.0.0"}}]},
           {dst, [{net, {"10.10.0.0", "255.255.255.0"}}]}]]},
 
