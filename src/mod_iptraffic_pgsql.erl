@@ -85,15 +85,15 @@ process_fetch_account_result(Result) ->
     end.
 
 handle_cast({start_session, UserName, SID, StartedAt}, State) ->
-    pgsql:equery(State#state.ref, "SELECT * FROM start_session($1, $2, $3)",
+    pgsql:equery(State#state.ref, "SELECT * FROM iptraffic_start_session($1, $2, $3)",
         [UserName, SID, StartedAt]),
     {noreply, State};
 handle_cast({stop_session, UserName, SID, FinishedAt, In, Out, Amount, Expired}, State) ->
-    pgsql:equery(State#state.ref, "SELECT * FROM stop_session($1, $2, $3, $4, $5, $6, $7)",
+    pgsql:equery(State#state.ref, "SELECT * FROM iptraffic_stop_session($1, $2, $3, $4, $5, $6, $7)",
         [UserName, SID, FinishedAt, In, Out, Amount, Expired]),
     {noreply, State};
 handle_cast({sync_session, UserName, SID, TimeStamp, In, Out, Balance}, State) ->
-    pgsql:equery(State#state.ref, "SELECT * FROM sync_session($1, $2, $3, $4, $5, $6)",
+    pgsql:equery(State#state.ref, "SELECT * FROM iptraffic_sync_session($1, $2, $3, $4, $5, $6)",
         [UserName, SID, TimeStamp, In, Out, Balance]),
     {noreply, State};
 handle_cast(_Request, State) ->
