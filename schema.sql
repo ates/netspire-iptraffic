@@ -8,22 +8,6 @@ CREATE TYPE auth_result AS (
     value VARCHAR
 );
 
-CREATE SEQUENCE iptraffic_sessions_id_seq START 1;
-
-CREATE TABLE iptraffic_sessions(
-    id INTEGER NOT NULL DEFAULT NEXTVAL('iptraffic_sessions_id_seq'::text),
-    account_id INTEGER NOT NULL,
-    sid VARCHAR(255),
-    octets_in BIGINT DEFAULT 0,
-    octets_out BIGINT DEFAULT 0,
-    amount NUMERIC(20, 10) DEFAULT 0,
-    started_at TIMESTAMP WITHOUT TIME ZONE,
-    updated_at TIMESTAMP WITHOUT TIME ZONE,
-    finished_at TIMESTAMP WITHOUT TIME ZONE,
-    expired BOOLEAN
-
-);
-
 CREATE OR REPLACE FUNCTION auth(VARCHAR) RETURNS SETOF auth_result AS $$
 DECLARE
     result RECORD;
