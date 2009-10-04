@@ -10,8 +10,7 @@
         {"Incoming Night", 1},
         {"Outgoing", 0},
         {"Local In", 0},
-        {"Local Out", 0},
-        {any, 0}
+        {"Local Out", 0}
      ]},
 
      {"Daylight", [
@@ -21,8 +20,7 @@
         {"Incoming Night", 2},
         {"Outgoing", 0},
         {"Local In", 0},
-        {"Local Out", 0},
-        {any, 0}
+        {"Local Out", 0}
      ]}]}.
 
 %% First matching rule wins
