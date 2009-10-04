@@ -44,7 +44,7 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION iptraffic_start_session(VARCHAR, VARCHAR, TIMESTAMP) RETURNS VOID AS $$
 DECLARE
-    acct_id integer;
+    acct_id INTEGER;
 BEGIN
     SELECT id INTO acct_id FROM accounts WHERE login ILIKE $1;
     INSERT INTO iptraffic_sessions(account_id, sid, started_at) VALUES (acct_id, $2, $3);
@@ -63,18 +63,14 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION iptraffic_sync_session(VARCHAR, VARCHAR, TIMESTAMP, BIGINT, BIGINT, FLOAT) RETURNS INTEGER AS $$
-DECLARE
-    _id INTEGER;
 BEGIN
-    SELECT id INTO _id FROM iptraffic_sessions WHERE sid = $2;
-    UPDATE iptraffic_sessions SET updated_at = $3 WHERE sid = $2 AND account_id = (SELECT id FROM accounts WHERE login ILIKE $1);
     LOOP
-        UPDATE iptraffic_sessions SET octets_in = $4, octets_out = $5, updated_at = $3, amount = $6 WHERE sid = $2 AND account_id = _id;
+        UPDATE iptraffic_sessions SET octets_in = $4, octets_out = $5, updated_at = $3, amount = $6 WHERE sid = $2 AND account_id = (SELECT id FROM accounts WHERE login ILIKE $1);
         if found THEN
             RETURN 1;
         END IF;
         BEGIN
-            INSERT INTO iptraffic_sessions(sid, octets_in, octets_out, amount, created_at, updated_at) VALUES($2, $4, $5, $6, $3, $3);
+            INSERT INTO iptraffic_sessions(sid, octets_in, octets_out, amount, started_at, updated_at) VALUES($2, $4, $5, $6, $3, $3);
             RETURN 0;
         END;
     END LOOP;
