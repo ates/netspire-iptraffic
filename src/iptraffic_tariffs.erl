@@ -22,7 +22,7 @@
 
 init(File) ->
     ets:new(iptraffic_tariffs, [named_table]),
-    ets:new(iptraffic_rules, [named_table, bag, {keypos, 2}]),
+    ets:new(iptraffic_rules, [named_table, ordered_set, {keypos, 2}]),
     load_file(File).
 
 match(Plan, Session, Args) ->
@@ -162,8 +162,8 @@ proto(Proto) ->
     Proto.
 
 net_match(Network, NetworkMask, IP) when is_integer(NetworkMask) ->
-    IPInt = netspire_util:ip4_to_int(IP),
-    NetworkInt = netspire_util:ip4_to_int(Network),
+    IPInt = netspire_util:ipconv(IP),
+    NetworkInt = netspire_util:ipconv(Network),
     Mask = 16#ffffffff bsl (32 - NetworkMask),
     if
         (IPInt band Mask) == (NetworkInt band Mask) ->
@@ -172,9 +172,9 @@ net_match(Network, NetworkMask, IP) when is_integer(NetworkMask) ->
     end;
 
 net_match(Network, NetworkMask, IP) when is_tuple(NetworkMask) ->
-    IPInt = netspire_util:ip4_to_int(IP),
-    NetworkInt = netspire_util:ip4_to_int(Network),
-    MaskInt = netspire_util:ip4_to_int(NetworkMask),
+    IPInt = netspire_util:ipconv(IP),
+    NetworkInt = netspire_util:ipconv(Network),
+    MaskInt = netspire_util:ipconv(NetworkMask),
     if
         (IPInt band MaskInt) == NetworkInt ->
             true;
