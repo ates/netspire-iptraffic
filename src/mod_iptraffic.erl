@@ -17,7 +17,6 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -include("netspire.hrl").
--include("netspire_radius.hrl").
 -include("radius/radius.hrl").
 -include("netflow/netflow_v5.hrl").
 -include("netflow/netflow_v9.hrl").
@@ -60,7 +59,7 @@ lookup_account(_Value, _Request, UserName, _Client) ->
     end.
 
 init_session(Response, Request, Extra, _Client) ->
-    UserName = radius:attribute_value(?USER_NAME, Request),
+    UserName = radius:attribute_value("User-Name", Request),
     case iptraffic_sup:init_session(UserName) of
         {ok, Pid} ->
             prepare_session(Pid, UserName, Extra, Response);
@@ -82,9 +81,9 @@ prepare_session(Pid, UserName, Extra, Response) ->
     end.
 
 accounting_request(_Response, ?ACCT_START, Request, _Client) ->
-    UserName = radius:attribute_value(?USER_NAME, Request),
-    IP = radius:attribute_value(?FRAMED_IP_ADDRESS, Request),
-    SID = radius:attribute_value(?ACCT_SESSION_ID, Request),
+    UserName = radius:attribute_value("User-Name", Request),
+    IP = radius:attribute_value("Framed-IP-Address", Request),
+    SID = radius:attribute_value("Acct-Session-Id", Request),
     case iptraffic_session:start(UserName, IP, SID) of
         ok ->
             #radius_packet{code = ?ACCT_RESPONSE};
@@ -92,7 +91,7 @@ accounting_request(_Response, ?ACCT_START, Request, _Client) ->
             noreply
     end;
 accounting_request(_Response, ?INTERIM_UPDATE, Request, _Client) ->
-    SID = radius:attribute_value(?ACCT_SESSION_ID, Request),
+    SID = radius:attribute_value("Acct-Session-Id", Request),
     case iptraffic_session:interim(SID) of
         ok ->
             #radius_packet{code = ?ACCT_RESPONSE};
@@ -100,7 +99,7 @@ accounting_request(_Response, ?INTERIM_UPDATE, Request, _Client) ->
             noreply
     end;
 accounting_request(_Response, ?ACCT_STOP, Request, _Client) ->
-    SID = radius:attribute_value(?ACCT_SESSION_ID, Request),
+    SID = radius:attribute_value("Acct-Session-Id", Request),
     case iptraffic_session:stop(SID) of
         {ok, State} ->
             ok = supervisor:delete_child(iptraffic_sup, {session, State#ipt_session.username}),
