@@ -10,6 +10,12 @@
 -include("netspire.hrl").
 -include("iptraffic.hrl").
 
+%% round(math:pow(2, N)) where N = 48, 12, 32, 30
+-define(RANDOM1, 281474976710656).
+-define(RANDOM2, 4096).
+-define(RANDOM3, 4294967296).
+-define(RANDOM4, 1073741824).
+
 start(Options) ->
     init_mnesia(),
     ChildSpec = {?MODULE,
@@ -78,10 +84,10 @@ resume_session(Key, Count) ->
     end.
 
 uuid_v4() ->
-    R1 = random:uniform(round(math:pow(2, 48))) - 1,
-    R2 = random:uniform(round(math:pow(2, 12))) - 1,
-    R3 = random:uniform(round(math:pow(2, 32))) - 1,
-    R4 = random:uniform(round(math:pow(2, 30))) - 1,
+    R1 = random:uniform(?RANDOM1) - 1,
+    R2 = random:uniform(?RANDOM2) - 1,
+    R3 = random:uniform(?RANDOM3) - 1,
+    R4 = random:uniform(?RANDOM4) - 1,
     <<R1:48, 4:4, R2:12, 2:2, R3:32, R4: 30>>.
 
 uuid_to_string(U) ->
