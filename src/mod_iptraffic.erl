@@ -40,7 +40,7 @@ init([Options]) ->
         ok ->
             netspire_netflow:add_packet_handler(iptraffic_session, []),
             netspire_hooks:add(radius_acct_lookup, ?MODULE, lookup_account),
-            netspire_hooks:add(radius_access_accept, ?MODULE, init_session),
+            netspire_hooks:add(radius_access_accept, ?MODULE, init_session, 10),
             netspire_hooks:add(radius_acct_request, ?MODULE, accounting_request),
             Timeout = proplists:get_value(session_timeout, Options, 60) * 1000,
             timer:send_interval(Timeout, expire_all),
