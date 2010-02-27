@@ -34,10 +34,7 @@ start_pool(Size, Options) ->
 
 stop() ->
     ?INFO_MSG("Stopping dynamic module ~p~n", [?MODULE]),
-    netspire_hooks:delete(backend_fetch_account, ?MODULE, fetch_account),
-    netspire_hooks:delete(backend_start_session, ?MODULE, start_session),
-    netspire_hooks:delete(backend_sync_session, ?MODULE, sync_session),
-    netspire_hooks:delete(backend_stop_session, ?MODULE, stop_session),
+    netspire_hooks:delete_all(?MODULE),
     supervisor:terminate_child(netspire_sup, pgsql_pool),
     supervisor:delete_child(netspire_sup, pgsql_pool).
 

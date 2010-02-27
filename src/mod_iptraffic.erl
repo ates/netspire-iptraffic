@@ -134,9 +134,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 terminate(_Reason, _State) ->
     netspire_netflow:delete_packet_handler(iptraffic_session),
-    netspire_hooks:delete(radius_acct_lookup, ?MODULE, lookup_account),
-    netspire_hooks:delete(radius_access_accept, ?MODULE, init_session),
-    netspire_hooks:delete(radius_acct_request, ?MODULE, accounting_request).
+    netspire_hooks:delete_all(?MODULE).
 
 traverse_all(Guard, Fun) ->
     Key = mnesia:dirty_first(ipt_session),
