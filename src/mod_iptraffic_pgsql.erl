@@ -2,7 +2,7 @@
 
 -behaviour(gen_module).
 
--export([pgsql_connect/1, fetch_account/2, start_session/5, sync_session/7, stop_session/8]).
+-export([fetch_account/2, start_session/5, sync_session/7, stop_session/8]).
 
 %% gen_module callbacks
 -export([start/1, stop/0]).
@@ -11,42 +11,26 @@
 
 start(Options) ->
     ?INFO_MSG("Starting dynamic module ~p~n", [?MODULE]),
-    case create_connection(Options) of
-        {ok, _} ->
+    PoolSize = proplists:get_value(pool_size, lists:last(Options), 5),
+    case start_pool(PoolSize, proplists:delete(pool_size, Options)) of
+        {ok, _Pid} ->
             netspire_hooks:add(backend_fetch_account, ?MODULE, fetch_account),
             netspire_hooks:add(backend_start_session, ?MODULE, start_session),
             netspire_hooks:add(backend_sync_session, ?MODULE, sync_session),
             netspire_hooks:add(backend_stop_session, ?MODULE, stop_session);
-        _ ->
+        _Any ->
             ok
     end.
 
-create_connection(Options) ->
-    ChildSpec = {?MODULE,
-                 {?MODULE, pgsql_connect, [Options]},
+start_pool(Size, Options) ->
+    ChildSpec = {pgsql_pool,
+                 {pgsql_pool, start_link, [Size, Options]},
                  transient,
                  3000,
                  worker,
-                 [?MODULE]
+                 [pgsql_pool]
                 },
     supervisor:start_child(netspire_sup, ChildSpec).
-
-pgsql_connect(Options) ->
-    pgsql_connect(Options, undefined, 1000).
-
-pgsql_connect(_Options, Error, 0) ->
-    ?ERROR_MSG("Cannot create database connection due to ~p~n", [Error]),
-    Error;
-pgsql_connect(Options, _LastError, I) ->
-    case erlang:apply(pgsql, connect, Options) of
-        {ok, Pid} ->
-            erlang:register(pgsql_connection, Pid),
-            ?INFO_MSG("Database connection created successfully~n", []),
-            {ok, Pid};
-        Error ->
-            timer:sleep(300),
-            pgsql_connect(Options, Error, I - 1)
-    end.
 
 stop() ->
     ?INFO_MSG("Stopping dynamic module ~p~n", [?MODULE]),
@@ -54,44 +38,52 @@ stop() ->
     netspire_hooks:delete(backend_start_session, ?MODULE, start_session),
     netspire_hooks:delete(backend_sync_session, ?MODULE, sync_session),
     netspire_hooks:delete(backend_stop_session, ?MODULE, stop_session),
-    pgsql:close(erlang:whereis(pgsql_connection)),
-    supervisor:terminate_child(netspire_sup, ?MODULE),
-    supervisor:delete_child(netspire_sup, ?MODULE).
+    supervisor:terminate_child(netspire_sup, pgsql_pool),
+    supervisor:delete_child(netspire_sup, pgsql_pool).
 
 fetch_account(_, UserName) ->
-    Ref = erlang:whereis(pgsql_connection),
-    DbResult = pgsql:equery(Ref, "SELECT * FROM auth($1)", [UserName]),
+    DbResult = execute("SELECT * FROM auth($1)", [UserName]),
     Result = process_fetch_account_result(DbResult),
     {stop, Result}.
 
 start_session(_, UserName, IP, SID, StartedAt) ->
-    Ref = erlang:whereis(pgsql_connection),
     Q = "SELECT * FROM iptraffic_start_session($1, $2, $3, $4)",
-    case pgsql:equery(Ref, Q, [UserName, inet_parse:ntoa(IP), SID, calendar:now_to_universal_time(StartedAt)]) of
+    case execute(Q, [UserName, inet_parse:ntoa(IP), SID, calendar:now_to_universal_time(StartedAt)]) of
         {ok, _, _} ->
             {stop, ok};
-        Error ->
-            {stop, {error, Error}}
+        {error, Reason} ->
+            {stop, {error, Reason}}
     end.
 
 sync_session(_, UserName, SID, UpdatedAt, In, Out, Amount) ->
-    Ref = erlang:whereis(pgsql_connection),
     Q = "SELECT * FROM iptraffic_sync_session($1, $2, $3, $4, $5, $6)",
-    case pgsql:equery(Ref, Q, [UserName, SID, calendar:now_to_universal_time(UpdatedAt), In, Out, Amount]) of
+    case execute(Q, [UserName, SID, calendar:now_to_universal_time(UpdatedAt), In, Out, Amount]) of
         {ok, _, _} ->
             {stop, ok};
-        Error ->
-            {stop, {error, Error}}
+        {error, Reason} ->
+            {stop, {error, Reason}}
     end.
 
 stop_session(_, UserName, SID, FinishedAt, In, Out, Amount, Expired) ->
-    Ref = erlang:whereis(pgsql_connection),
     Q = "SELECT * FROM iptraffic_stop_session($1, $2, $3, $4, $5, $6, $7)",
-    case pgsql:equery(Ref, Q, [UserName, SID, calendar:now_to_universal_time(FinishedAt), In, Out, Amount, Expired]) of
+    case execute(Q, [UserName, SID, calendar:now_to_universal_time(FinishedAt), In, Out, Amount, Expired]) of
         {ok, _, _} ->
             {stop, ok};
-        Error ->
-            {stop, {error, Error}}
+        {error, Reason} ->
+            {stop, {error, Reason}}
+    end.
+
+execute(Q, Params) ->
+    case pgsql_pool:get_connection() of
+        {ok, C} ->
+            try
+                pgsql:equery(C, Q, Params)
+            after
+                pgsql_pool:return_connection(C)
+            end;
+        {error, timeout} ->
+            ?INFO_MSG("Unable to obtain database connection due to timeout~n", []),
+            {error, timeout}
     end.
 
 process_fetch_account_result(Result) ->
