@@ -1,19 +1,23 @@
-The iptraffic module provides the abilities to serve the VPM customers.
+The IPTraffic module for serving VPN customers
+==============================================
 
 Features:
 
+* RADIUS authentication
 * Realtime traffic calculation using [Netflow](http://en.wikipedia.org/wiki/Netflow) v5 as a traffic source
-* Supporting the tariff plans
-* Restoring sessions after Netspire crash
-* Using PostgreSQL database for the storing users, tariff plans, radius attributes and sessions
+* Flexible tariffs (subnet rules, time rules)
+* Using PostgreSQL database for the storing users, tariff plans, RADIUS attributes and sessions
+* It's easy to add your own backends
 
-Configuration:
+Configuration
+-------------
 
-The following options should be added to the netspire.conf file for integrating the mod_iptraffic with the Netspire system:
+The following modules should be added to the netspire.conf file:
 
-{mod_iptraffic, [{tariffs_config, "tariffs.conf"}, {session_timeout, 60}]}
+    {mod_iptraffic, [{tariffs_config, "tariffs.conf"}, {session_timeout, 60}]}
+    {mod_iptraffic_pgsql, ["hostname", "username", "password", [{database, "dbname"}, {pool_size, 5}]]}
 
-{mod_iptraffic_pgsql, ["hostname", "username", [{database, "databasename"}]]}
+The default value of the **session_timeout** option is 60 seconds and may be ommited.
 
-The default value of the session_timeout option is 60 seconds and may be ommited.
-
+You MUST set **Acct-Interim-Interval** RADIUS attribute for client. This attribute is required to prolong session and it's value MUST be significantly less than **session_timeout**.
+Note that if Netspire does not receiving interim updates from NAS via RADIUS, sessions will be marked as *expired* and closed, regardless of real state on NAS.
