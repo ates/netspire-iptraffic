@@ -53,16 +53,39 @@ match_rule(any, _) ->
 match_rule(Rule, Args) ->
     match_time(Rule#netflow_rule.time, Args#ipt_args.sec) andalso
     (Rule#netflow_rule.dir == Args#ipt_args.dir orelse Rule#netflow_rule.dir == any) andalso
-    net_match(Rule#netflow_rule.src_net, Rule#netflow_rule.src_mask, Args#ipt_args.src_ip) andalso
-    net_match(Rule#netflow_rule.dst_net, Rule#netflow_rule.dst_mask, Args#ipt_args.dst_ip) andalso
+    match_net(Rule#netflow_rule.src_net, Rule#netflow_rule.src_mask, Args#ipt_args.src_ip) andalso
+    match_net(Rule#netflow_rule.dst_net, Rule#netflow_rule.dst_mask, Args#ipt_args.dst_ip) andalso
     (Rule#netflow_rule.src_port == Args#ipt_args.src_port orelse Rule#netflow_rule.src_port == any) andalso
     (Rule#netflow_rule.src_port == Args#ipt_args.dst_port orelse Rule#netflow_rule.dst_port == any) andalso
     (Rule#netflow_rule.proto == Args#ipt_args.proto orelse Rule#netflow_rule.proto == any).
 
 match_time(any, _) ->
     true;
-match_time({Start, End}, Time) ->
-    Time >= Start andalso Time =< End.
+match_time({0, 0}, _Time) ->
+    true;
+match_time({Start, End}, Time) when End >= Start ->
+    Time >= Start andalso Time =< End;
+match_time({Start, End}, Time) when End < Start ->
+    Time >= Start orelse Time =< End.
+
+match_net(Network, NetworkMask, IP) when is_integer(NetworkMask) ->
+    IPInt = netspire_util:ipconv(IP),
+    NetworkInt = netspire_util:ipconv(Network),
+    Mask = 16#ffffffff bsl (32 - NetworkMask),
+    if
+        (IPInt band Mask) == (NetworkInt band Mask) ->
+            true;
+        true -> false
+    end;
+match_net(Network, NetworkMask, IP) when is_tuple(NetworkMask) ->
+    IPInt = netspire_util:ipconv(IP),
+    NetworkInt = netspire_util:ipconv(Network),
+    MaskInt = netspire_util:ipconv(NetworkMask),
+    if
+        (IPInt band MaskInt) == NetworkInt ->
+            true;
+        true -> false
+    end.
 
 load_file(File) ->
     ?INFO_MSG("Reading tariffs ~s~n", [File]),
@@ -160,23 +183,3 @@ proto(udp) ->
     17;
 proto(Proto) ->
     Proto.
-
-net_match(Network, NetworkMask, IP) when is_integer(NetworkMask) ->
-    IPInt = netspire_util:ipconv(IP),
-    NetworkInt = netspire_util:ipconv(Network),
-    Mask = 16#ffffffff bsl (32 - NetworkMask),
-    if
-        (IPInt band Mask) == (NetworkInt band Mask) ->
-            true;
-        true -> false
-    end;
-
-net_match(Network, NetworkMask, IP) when is_tuple(NetworkMask) ->
-    IPInt = netspire_util:ipconv(IP),
-    NetworkInt = netspire_util:ipconv(Network),
-    MaskInt = netspire_util:ipconv(NetworkMask),
-    if
-        (IPInt band MaskInt) == NetworkInt ->
-            true;
-        true -> false
-    end.
