@@ -9,7 +9,7 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {size, connections, monitors, waiting, options}).
+-record(state, {size, connections = [], monitors = [], waiting = [], options}).
 
 start_link(Size, Options) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [Size, Options], []).
@@ -32,7 +32,7 @@ return_connection(C) ->
 init([Size, Options]) ->
     process_flag(trap_exit, true),
     {ok, C} = connect(Options),
-    State = #state{size = Size, connections = [C], monitors = [], waiting = queue:new(), options = Options},
+    State = #state{size = Size, connections = [C], waiting = queue:new(), options = Options},
     {ok, State}.
 
 handle_call(get_connection, From, #state{connections = Connections, waiting = Waiting} = State) ->
@@ -42,8 +42,7 @@ handle_call(get_connection, From, #state{connections = Connections, waiting = Wa
         [] ->
             case length(State#state.monitors) < State#state.size of
                 true ->
-                    {ok, C} = connect(State#state.options),
-                    {noreply, deliver(From, C, State)};
+                    deliver(From, State);
                 false ->
                     {noreply, State#state{waiting = queue:in(From, Waiting)}}
             end
@@ -77,7 +76,7 @@ handle_info({'DOWN', M, process, _Pid, _Info}, #state{monitors = Monitors} = Sta
 
 handle_info({'EXIT', Pid, _Reason}, State) ->
     #state{connections = Connections, monitors = Monitors} = State,
-    NewConnections = proplists:delete(Pid, Connections),
+    NewConnections = lists:delete(Pid, Connections),
     F = fun({C, M}) when C == Pid -> erlang:demonitor(M), false;
             (_) -> true
         end,
@@ -94,6 +93,14 @@ terminate(_Reason, _State) ->
 
 connect(Options) ->
     erlang:apply(pgsql, connect, Options).
+
+deliver(From, State) ->
+    case connect(State#state.options) of
+        {ok, C} ->
+            {noreply, deliver(From, C, State)};
+        Error ->
+            {reply, Error, State}
+    end.
 
 deliver({Pid, _Tag} = From, C, #state{monitors = Monitors} = State) ->
     M = erlang:monitor(process, Pid),
