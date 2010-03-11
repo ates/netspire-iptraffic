@@ -142,14 +142,18 @@ traverse_all(Guard, Fun) ->
 traverse_all('$end_of_table', _, _) ->
     ok;
 traverse_all(Key, Guard, Fun) ->
-    [State] = mnesia:dirty_read(ipt_session, Key),
-    Next = mnesia:dirty_next(ipt_session, Key),
-    case Guard(State) of
-        true ->
-            Fun(State),
-            traverse_all(Next, Guard, Fun);
-        _ ->
-            traverse_all(Next, Guard, Fun)
+    case mnesia:dirty_read(ipt_session, Key) of
+        [State] ->
+            Next = mnesia:dirty_next(ipt_session, Key),
+            case Guard(State) of
+                true ->
+                    Fun(State),
+                    traverse_all(Next, Guard, Fun);
+                _ ->
+                    traverse_all(Next, Guard, Fun)
+            end;
+        [] ->
+            traverse_all(Guard, Fun)
     end.
 
 get_option(Name, Default) ->
