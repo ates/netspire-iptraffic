@@ -1,6 +1,6 @@
 -module(iptraffic_tariffs).
 
--export([init/1, match/3]).
+-export([init/1, match/3, reload/1]).
 
 -include("netspire.hrl").
 -include("iptraffic.hrl").
@@ -21,8 +21,8 @@
 }).
 
 init(File) ->
-    ets:new(iptraffic_tariffs, [named_table]),
-    ets:new(iptraffic_rules, [named_table, ordered_set, {keypos, 2}]),
+    ets:new(iptraffic_tariffs, [named_table, public]),
+    ets:new(iptraffic_rules, [named_table, public, ordered_set, {keypos, 2}]),
     load_file(File).
 
 match(Plan, Session, Args) ->
@@ -30,6 +30,11 @@ match(Plan, Session, Args) ->
         {ok, Rule} -> get_cost(Plan, Session, Rule);
         Error -> Error
     end.
+
+reload(File) when is_list(File) ->
+    ets:delete_all_objects(iptraffic_tariffs),
+    ets:delete_all_objects(iptraffic_rules),
+    load_file(File).
 
 get_cost(Plan, _Session, Rule) ->
     Key = {Plan, Rule#netflow_rule.class},
