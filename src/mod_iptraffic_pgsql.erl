@@ -53,17 +53,7 @@ stop_session(_, UserName, SID, FinishedAt, In, Out, Amount, Expired) ->
     end.
 
 execute(Q, Params) ->
-    case pgsql_pool:get_connection() of
-        {ok, C} ->
-            try
-                pgsql:equery(C, Q, Params)
-            after
-                pgsql_pool:return_connection(C)
-            end;
-        {error, timeout} ->
-            ?INFO_MSG("Unable to obtain database connection due to timeout~n", []),
-            {error, timeout}
-    end.
+    mod_postgresql:execute(Q, Params).
 
 process_fetch_account_result(Result) ->
     F = fun({_, _, _, null, null}) ->
