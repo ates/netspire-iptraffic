@@ -9,34 +9,16 @@
 
 -include("netspire.hrl").
 
-start(Options) ->
+start(_Options) ->
     ?INFO_MSG("Starting dynamic module ~p~n", [?MODULE]),
-    PoolSize = proplists:get_value(pool_size, lists:last(Options), 5),
-    case start_pool(PoolSize, proplists:delete(pool_size, Options)) of
-        {ok, _Pid} ->
-            netspire_hooks:add(backend_fetch_account, ?MODULE, fetch_account),
-            netspire_hooks:add(backend_start_session, ?MODULE, start_session),
-            netspire_hooks:add(backend_sync_session, ?MODULE, sync_session),
-            netspire_hooks:add(backend_stop_session, ?MODULE, stop_session);
-        _Any ->
-            ok
-    end.
-
-start_pool(Size, Options) ->
-    ChildSpec = {pgsql_pool,
-                 {pgsql_pool, start_link, [Size, Options]},
-                 transient,
-                 3000,
-                 worker,
-                 [pgsql_pool]
-                },
-    supervisor:start_child(netspire_sup, ChildSpec).
+    netspire_hooks:add(iptraffic_fetch_account, ?MODULE, fetch_account),
+    netspire_hooks:add(iptraffic_start_session, ?MODULE, start_session),
+    netspire_hooks:add(iptraffic_sync_session, ?MODULE, sync_session),
+    netspire_hooks:add(iptraffic_stop_session, ?MODULE, stop_session).
 
 stop() ->
     ?INFO_MSG("Stopping dynamic module ~p~n", [?MODULE]),
-    netspire_hooks:delete_all(?MODULE),
-    supervisor:terminate_child(netspire_sup, pgsql_pool),
-    supervisor:delete_child(netspire_sup, pgsql_pool).
+    netspire_hooks:delete_all(?MODULE).
 
 fetch_account(_, UserName) ->
     DbResult = execute("SELECT * FROM auth($1)", [UserName]),

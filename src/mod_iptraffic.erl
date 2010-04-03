@@ -38,6 +38,13 @@ init([Options]) ->
     Config = proplists:get_value(tariffs_config, Options, []),
     case iptraffic_tariffs:init(Config) of
         ok ->
+            case application:get_env(netspire, database_backend) of
+                {ok, Name} ->
+                    Module = lists:concat([?MODULE, "_", Name]),
+                    gen_module:start_module(list_to_atom(Module), []);
+                undefined ->
+                    ?ERROR_MSG("Cannot determine database backend~n", [])
+            end,
             netspire_netflow:add_packet_handler(iptraffic_session, []),
             netspire_hooks:add(radius_acct_lookup, ?MODULE, lookup_account),
             netspire_hooks:add(radius_access_accept, ?MODULE, init_session, 10),
@@ -50,7 +57,7 @@ init([Options]) ->
     end.
 
 lookup_account(_Value, _Request, UserName, _Client) ->
-    case netspire_hooks:run_fold(backend_fetch_account, undefined, [UserName]) of
+    case netspire_hooks:run_fold(iptraffic_fetch_account, undefined, [UserName]) of
         {ok, Data} ->
             Response = {ok, Data},
             {stop, Response};

@@ -93,7 +93,7 @@ handle_call({start, IP, SID}, _From, State) ->
     case mnesia:transaction(F) of
         {atomic, NewState} ->
             UserName = State#ipt_session.username,
-            case netspire_hooks:run_fold(backend_start_session, undef, [UserName, IP, SID, now()]) of
+            case netspire_hooks:run_fold(iptraffic_start_session, undef, [UserName, IP, SID, now()]) of
                 ok ->
                     {reply, ok, NewState};
                 _Error ->
@@ -116,7 +116,7 @@ handle_call(interim, _From, State) ->
         {atomic, NewState} ->
             #ipt_session{sid = SID, username = UserName, data = Data} = State,
             #ipt_data{octets_in = In, octets_out = Out, amount = Amount} = Data,
-            case netspire_hooks:run_fold(backend_sync_session, undef, [UserName, SID, now(), In, Out, Amount]) of
+            case netspire_hooks:run_fold(iptraffic_sync_session, undef, [UserName, SID, now(), In, Out, Amount]) of
                 ok ->
                     {reply, ok, NewState};
                 _Error ->
@@ -175,7 +175,7 @@ stop_session(#ipt_session{status = new} = Session, _Expired) ->
 stop_session(Session, Expired) ->
     #ipt_session{sid = SID, username = UserName, data = Data} = Session,
     #ipt_data{octets_in = In, octets_out = Out, amount = Amount} = Data,
-    case netspire_hooks:run_fold(backend_stop_session, undef, [UserName, SID, now(), In, Out, Amount, Expired]) of
+    case netspire_hooks:run_fold(iptraffic_stop_session, undef, [UserName, SID, now(), In, Out, Amount, Expired]) of
         ok ->
             mnesia:dirty_delete_object(Session),
             ok;
