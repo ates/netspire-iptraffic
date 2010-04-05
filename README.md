@@ -15,7 +15,6 @@ Configuration
 The following modules should be added to the netspire.conf file:
 
     {mod_iptraffic, [{tariffs_config, "tariffs.conf"}, {session_timeout, 60}]}
-    {mod_iptraffic_pgsql, ["hostname", "username", "password", [{database, "dbname"}, {pool_size, 5}]]}
 
 The default value of the **session_timeout** option is 60 seconds and may be ommited.
 
