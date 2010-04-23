@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, prepare/3, start/3, interim/1, stop/1, expire/1, handle_packet/2]).
+-export([start_link/1, prepare/4, start/3, interim/1, stop/1, expire/1, handle_packet/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -17,8 +17,8 @@
 start_link(UUID) ->
     gen_server:start_link(?MODULE, [UUID], []).
 
-prepare(Pid, UserName, Extra) ->
-    gen_server:call(Pid, {prepare, UserName, Extra}).
+prepare(Pid, UserName, Extra, Client) ->
+    gen_server:call(Pid, {prepare, UserName, Extra, Client}).
 
 start(UserName, IP, SID) ->
     case fetch({new, UserName}) of
@@ -73,14 +73,14 @@ init([UUID]) ->
             {stop, ambiguous_match}
     end.
 
-handle_call({prepare, UserName, {Balance, Plan} = _Extra}, _From, State) ->
+handle_call({prepare, UserName, {Balance, Plan}, Client}, _From, State) ->
     SID = {new, UserName},
     Now = netspire_util:timestamp(),
     Timeout = mod_iptraffic:get_option(session_timeout, 60),
     ExpiresAt = Now + Timeout,
     Data = #ipt_data{balance = Balance, plan = Plan},
-    NewState = State#ipt_session{sid = SID, status = new, username = UserName, data = Data,
-        started_at = Now, expires_at = ExpiresAt},
+    NewState = State#ipt_session{sid = SID, status = new, username = UserName, nas_spec = Client,
+        data = Data, started_at = Now, expires_at = ExpiresAt},
     mnesia:dirty_write(NewState),
     {reply, ok, NewState};
 handle_call({start, IP, SID}, _From, State) ->

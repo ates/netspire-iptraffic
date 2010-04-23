@@ -65,20 +65,20 @@ lookup_account(_Value, _Request, UserName, _Client) ->
             {stop, undefined}
     end.
 
-init_session(Response, Request, Extra, _Client) ->
+init_session(Response, Request, Extra, Client) ->
     UserName = radius:attribute_value("User-Name", Request),
     case iptraffic_sup:init_session(UserName) of
         {ok, Pid} ->
-            prepare_session(Pid, UserName, Extra, Response);
+            prepare_session(Pid, UserName, Extra, Response, Client);
         {ok, Pid, _Info} ->
-            prepare_session(Pid, UserName, Extra, Response);
+            prepare_session(Pid, UserName, Extra, Response, Client);
         {error, Reason}->
             ?ERROR_MSG("Can not initialize session for user ~s due to ~p~n", [UserName, Reason]),
             {reject, []}
     end.
 
-prepare_session(Pid, UserName, Extra, Response) ->
-    case iptraffic_session:prepare(Pid, UserName, Extra) of
+prepare_session(Pid, UserName, Extra, Response, Client) ->
+    case iptraffic_session:prepare(Pid, UserName, Extra, Client) of
         ok ->
             ?INFO_MSG("Session prepared for user ~s~n", [UserName]),
             Response;

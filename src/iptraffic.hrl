@@ -10,6 +10,7 @@
         expires_at,
         pid,
         node,
+        nas_spec,
         data
     }).
 
