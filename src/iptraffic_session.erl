@@ -252,7 +252,11 @@ do_accounting(Session, Args) ->
             NewBalance = Data#ipt_data.balance - (Data#ipt_data.amount + Amount),
             if
                 NewBalance =< 0 ->
-                    netspire_hooks:run(disconnect_client, [Session]);
+                    UserName = Session#ipt_session.username,
+                    SID = Session#ipt_session.sid,
+                    IP = Session#ipt_session.ip,
+                    NasSpec = Session#ipt_session.nas_spec,
+                    netspire_hooks:run(disconnect_client, [UserName, SID, IP, NasSpec]);
                 true -> false
             end,
             NewState = update_session_state(Session, Args, Amount),
