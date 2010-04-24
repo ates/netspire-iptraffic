@@ -11,6 +11,7 @@
         pid,
         node,
         nas_spec,
+        disc_req_sent,
         data
     }).
 

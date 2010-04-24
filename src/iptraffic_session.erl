@@ -79,7 +79,7 @@ handle_call({prepare, UserName, {Balance, Plan}, Client}, _From, State) ->
     Timeout = mod_iptraffic:get_option(session_timeout, 60),
     ExpiresAt = Now + Timeout,
     Data = #ipt_data{balance = Balance, plan = Plan},
-    NewState = State#ipt_session{sid = SID, status = new, username = UserName, nas_spec = Client,
+    NewState = State#ipt_session{sid = SID, status = new, username = UserName, nas_spec = Client, disc_req_sent = false,
         data = Data, started_at = Now, expires_at = ExpiresAt},
     mnesia:dirty_write(NewState),
     {reply, ok, NewState};
@@ -250,16 +250,13 @@ do_accounting(Session, Args) ->
         {ok, {Plan, _Rule, Cost} = MatchResult} when Cost > 0 ->
             Amount = Args#ipt_args.octets / 1024 / 1024 * Cost,
             NewBalance = Data#ipt_data.balance - (Data#ipt_data.amount + Amount),
-            if
-                NewBalance =< 0 ->
-                    UserName = Session#ipt_session.username,
-                    SID = Session#ipt_session.sid,
-                    IP = Session#ipt_session.ip,
-                    NasSpec = Session#ipt_session.nas_spec,
-                    netspire_hooks:run(disconnect_client, [UserName, SID, IP, NasSpec]);
-                true -> false
+            NewSession = if
+                NewBalance =< 0 andalso Session#ipt_session.disc_req_sent == false ->
+                    spawn(fun() -> disconnect_client(Session) end),
+                    Session#ipt_session{disc_req_sent = true};
+                true -> Session
             end,
-            NewState = update_session_state(Session, Args, Amount),
+            NewState = update_session_state(NewSession, Args, Amount),
             netspire_hooks:run(matched_session, [Session, Args, MatchResult, Amount]),
             {ok, NewState};
         {ok, MatchResult} ->
@@ -270,6 +267,19 @@ do_accounting(Session, Args) ->
             ?ERROR_MSG("Cannot process accounting for session ~s due to ~p~n",
                 [Session#ipt_session.sid, Reason]),
             {error, Reason}
+    end.
+
+disconnect_client(Session) ->
+    UserName = Session#ipt_session.username,
+    SID = Session#ipt_session.sid,
+    IP = Session#ipt_session.ip,
+    NasSpec = Session#ipt_session.nas_spec,
+    ?INFO_MSG("Disconnecting ~s | SID: ~p~n", [UserName, SID]),
+    case netspire_hooks:run_fold(disconnect_client, undef, [UserName, SID, IP, NasSpec]) of
+        {ok, _} ->
+            ?INFO_MSG("User ~s | SID: ~p successful disconnected~n", [UserName, SID]);
+        Error ->
+            ?ERROR_MSG("Failed to disconnect ~s | SID: ~p due to ~p~n", [UserName, SID, Error])
     end.
 
 update_session_state(Session, Args, Amount) ->
