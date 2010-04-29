@@ -115,6 +115,7 @@ $$ LANGUAGE plpgsql;
 -- Plans
 INSERT INTO iptraffic_plans(name) VALUES('Ultimate');
 INSERT INTO iptraffic_plans(name) VALUES('Daylight');
+INSERT INTO iptraffic_plans(name) VALUES('Unlimited'); -- 0 cost to all directions
 
 -- Directions
 -- For Ultimate tariff
@@ -134,6 +135,9 @@ INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(2, 4, 0.5);
 INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(2, 4, 2);
 INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(2, 7, 0);
 INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(2, 1, 0);
+
+-- For Unlimited tariff
+INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(3, 8, 0);
 
 -- Classes
 INSERT INTO iptraffic_classes(period_id, name, src, dst) VALUES(
@@ -156,6 +160,9 @@ INSERT INTO iptraffic_classes(period_id, name, src, dst) VALUES(
 
 INSERT INTO iptraffic_classes(period_id, name, src, dst) VALUES(
     1, 'Outgoing', '10.10.0.0/16', '0.0.0.0/0');
+
+INSERT INTO iptraffic_classes(period_id, name, src, dst) VALUES(
+    1, 'FREE', '0.0.0.0/0', '0.0.0.0/0');
 
 -- Periods
 INSERT INTO iptraffic_periods(name) VALUES('All Day');
