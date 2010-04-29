@@ -2,7 +2,7 @@
 
 -behaviour(gen_module).
 
--export([fetch_account/2, start_session/5, sync_session/7, stop_session/8]).
+-export([fetch_account/2, load_tariffs/1, start_session/5, sync_session/7, stop_session/8]).
 
 %% gen_module callbacks
 -export([start/1, stop/0]).
@@ -12,6 +12,7 @@
 start(_Options) ->
     ?INFO_MSG("Starting dynamic module ~p~n", [?MODULE]),
     netspire_hooks:add(iptraffic_fetch_account, ?MODULE, fetch_account),
+    netspire_hooks:add(iptraffic_load_tariffs, ?MODULE, load_tariffs),
     netspire_hooks:add(iptraffic_start_session, ?MODULE, start_session),
     netspire_hooks:add(iptraffic_sync_session, ?MODULE, sync_session),
     netspire_hooks:add(iptraffic_stop_session, ?MODULE, stop_session).
@@ -23,6 +24,11 @@ stop() ->
 fetch_account(_, UserName) ->
     DbResult = execute("SELECT * FROM auth($1)", [UserName]),
     Result = process_fetch_account_result(DbResult),
+    {stop, Result}.
+
+load_tariffs(_) ->
+    DbResult = execute("SELECT * FROM iptraffic_load_tariffs()", []),
+    Result = process_load_tariffs_result(DbResult),
     {stop, Result}.
 
 start_session(_, UserName, IP, SID, StartedAt) ->
@@ -70,6 +76,25 @@ process_fetch_account_result(Result) ->
                     {Password, Balance, Plan, _, _} = lists:nth(1, Res),
                     Attrs = lists:filter(fun(E) -> E /= undefined end, lists:map(F, Res)),
                     {ok, {binary_to_list(Password), Attrs, {Balance, binary_to_list(Plan)}}}
+            end;
+        _ -> undefined
+    end.
+
+process_load_tariffs_result(Result) ->
+    F1 = fun(V) when is_binary(V) ->
+            case catch binary_to_list(V) of
+                L when is_list(L) -> L;
+                _ -> any
+            end;
+        (V) when V == null -> any;
+        (V) -> V
+    end,
+    F = fun(X) -> lists:map(F1, tuple_to_list(X)) end,
+    case Result of
+        {ok, _Columns, Rows} ->
+            case Rows of
+                [] -> undefined;
+                Res -> lists:map(F, Res)
             end;
         _ -> undefined
     end.
