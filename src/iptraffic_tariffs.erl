@@ -57,6 +57,7 @@ match_rule(any, _) ->
     true;
 match_rule(Rule, Args) ->
     match_time(Rule#netflow_rule.time, Args#ipt_args.sec) andalso
+    match_days(Rule#netflow_rule.days) andalso
     (Rule#netflow_rule.dir == Args#ipt_args.dir orelse Rule#netflow_rule.dir == any) andalso
     match_net(Rule#netflow_rule.src_net, Rule#netflow_rule.src_mask, Args#ipt_args.src_ip) andalso
     match_net(Rule#netflow_rule.dst_net, Rule#netflow_rule.dst_mask, Args#ipt_args.dst_ip) andalso
@@ -72,6 +73,11 @@ match_time({Start, End}, Time) when End >= Start ->
     Time >= Start andalso Time =< End;
 match_time({Start, End}, Time) when End < Start ->
     Time >= Start orelse Time =< End.
+
+match_days(Days) ->
+    {Today, _} = erlang:localtime(),
+    DayOfWeek = calendar:day_of_the_week(Today),
+    lists:member(DayOfWeek, Days).
 
 match_net(Network, NetworkMask, IP) when is_integer(NetworkMask) ->
     IPInt = netspire_util:ipconv(IP),
@@ -95,9 +101,8 @@ match_net(Network, NetworkMask, IP) when is_tuple(NetworkMask) ->
 load_plans() ->
     case netspire_hooks:run_fold(iptraffic_load_tariffs, undef, []) of
         Tariffs when is_list(Tariffs) ->
-            io:format("Tariffs: ~p~n", [Tariffs]),
             process_terms(Tariffs);
-        X -> io:format("Cannot load tariffs: ~p~n", [X])
+        Error -> ?ERROR_MSG("Cannot load tariff plans due to ~p~n", [Error])
     end.
 
 process_terms([]) -> ok;
@@ -110,7 +115,7 @@ process_terms([Term|T]) ->
      Rec = #netflow_rule{
          class = Dir,
          time = read_time(Hours),
-         days = string:tokens(Days, ","),
+         days = read_days(Days),
          dir = any,
          src_net = A1,
          src_mask = M1,
@@ -127,6 +132,9 @@ expand_net(Net) ->
     [A, M] = string:tokens(Net, "/"),
     {ok, A1} = inet_parse:address(A),
     {A1, list_to_integer(M)}.
+
+read_days(Days) ->
+    lists:map(fun(D) -> list_to_integer(D) end, string:tokens(Days, ",")).
 
 read_time(Frame) ->
     [Start, End] = string:tokens(Frame, "-"),
