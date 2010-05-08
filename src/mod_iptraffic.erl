@@ -47,7 +47,7 @@ init([Options]) ->
             end,
             netspire_netflow:add_packet_handler(iptraffic_session, []),
             netspire_hooks:add(radius_acct_lookup, ?MODULE, lookup_account),
-            netspire_hooks:add(radius_access_accept, ?MODULE, init_session, 10),
+            netspire_hooks:add(radius_access_accept, ?MODULE, init_session),
             netspire_hooks:add(radius_acct_request, ?MODULE, accounting_request),
             Timeout = proplists:get_value(session_timeout, Options, 60) * 1000,
             timer:send_interval(Timeout, expire_all),
@@ -78,14 +78,18 @@ init_session(Response, Request, Extra, Client) ->
     end.
 
 prepare_session(Pid, UserName, Extra, Response, Client) ->
-    case iptraffic_session:prepare(Pid, UserName, Extra, Client) of
-        ok ->
-            ?INFO_MSG("Session prepared for user ~s~n", [UserName]),
-            Response;
-        {error, Reason} ->
-            ?ERROR_MSG("Can not prepare session for user ~s due to ~p~n", [UserName, Reason]),
-            {reject, []}
-    end.
+    case netspire_hooks:run_fold(ippool_lease_ip, Response, [Response]) of
+        NewResponse when is_record(NewResponse, radius_packet) ->
+            case iptraffic_session:prepare(Pid, UserName, Extra, Client) of
+                ok ->
+                    ?INFO_MSG("Session prepared for user ~s~n", [UserName]),
+                    NewResponse;
+                {error, Reason} ->
+                    ?ERROR_MSG("Can not prepare session for user ~s due to ~p~n", [UserName, Reason]),
+                    {reject, []}
+            end;
+        Error -> Error
+        end.
 
 accounting_request(_Response, ?ACCT_START, Request, _Client) ->
     UserName = radius:attribute_value("User-Name", Request),
@@ -101,6 +105,7 @@ accounting_request(_Response, ?INTERIM_UPDATE, Request, _Client) ->
     SID = radius:attribute_value("Acct-Session-Id", Request),
     case iptraffic_session:interim(SID) of
         ok ->
+            netspire_hooks:run(ippool_renew_ip, [Request]),
             #radius_packet{code = ?ACCT_RESPONSE};
         _Error ->
             noreply
