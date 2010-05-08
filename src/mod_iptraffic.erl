@@ -78,7 +78,7 @@ init_session(Response, Request, Extra, Client) ->
     end.
 
 prepare_session(Pid, UserName, Extra, Response, Client) ->
-    case netspire_hooks:run_fold(ippool_lease_ip, Response, [Response]) of
+    case netspire_hooks:run_fold(ippool_lease_ip, Response, []) of
         NewResponse when is_record(NewResponse, radius_packet) ->
             case iptraffic_session:prepare(Pid, UserName, Extra, Client) of
                 ok ->
