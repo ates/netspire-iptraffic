@@ -89,7 +89,7 @@ prepare_session(Pid, UserName, Extra, Response, Client) ->
                     {reject, []}
             end;
         Error -> Error
-        end.
+    end.
 
 accounting_request(_Response, ?ACCT_START, Request, _Client) ->
     UserName = radius:attribute_value("User-Name", Request),
