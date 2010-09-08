@@ -1,0 +1,15 @@
+AC_INIT([Netspire modules], [0.1], [], [])
+
+AC_PREREQ(0.1)
+
+AC_PROG_MAKE_SET
+
+AM_WITH_ERLANG
+AM_WITH_NETSPIRE
+
+AC_PREFIX_DEFAULT(/usr/local/)
+
+AC_CONFIG_FILES([Makefile])
+AC_CONFIG_FILES([src/Makefile])
+
+AC_OUTPUT
