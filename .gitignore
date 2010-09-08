@@ -1,0 +1,7 @@
+*.log
+ebin
+Makefile
+configure
+config.status
+autom4te.cache/*
+
