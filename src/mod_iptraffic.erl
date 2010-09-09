@@ -66,29 +66,29 @@ lookup_account(_Value, _Request, UserName, _Client) ->
     end.
 
 init_session(Response, Request, Extra, Client) ->
-    UserName = radius:attribute_value("User-Name", Request),
-    case iptraffic_sup:init_session(UserName) of
-        {ok, Pid} ->
-            prepare_session(Pid, UserName, Extra, Response, Client);
-        {ok, Pid, _Info} ->
-            prepare_session(Pid, UserName, Extra, Response, Client);
-        {error, Reason}->
-            ?ERROR_MSG("Can not initialize session for user ~s due to ~p~n", [UserName, Reason]),
-            {reject, []}
-    end.
-
-prepare_session(Pid, UserName, Extra, Response, Client) ->
     case netspire_hooks:run_fold(ippool_lease_ip, Response, []) of
         NewResponse when is_record(NewResponse, radius_packet) ->
-            case iptraffic_session:prepare(Pid, UserName, Extra, Client) of
-                ok ->
-                    ?INFO_MSG("Session prepared for user ~s~n", [UserName]),
-                    NewResponse;
-                {error, Reason} ->
-                    ?ERROR_MSG("Can not prepare session for user ~s due to ~p~n", [UserName, Reason]),
+            UserName = radius:attribute_value("User-Name", Request),
+            case iptraffic_sup:init_session(UserName) of
+                {ok, Pid} ->
+                    prepare_session(Pid, UserName, Extra, NewResponse, Client);
+                {ok, Pid, _Info} ->
+                    prepare_session(Pid, UserName, Extra, NewResponse, Client);
+                {error, Reason}->
+                    ?ERROR_MSG("Can not initialize session for user ~s due to ~p~n", [UserName, Reason]),
                     {reject, []}
             end;
         Error -> Error
+    end.
+
+prepare_session(Pid, UserName, Extra, Response, Client) ->
+    case iptraffic_session:prepare(Pid, UserName, Extra, Client) of
+        ok ->
+            ?INFO_MSG("Session prepared for user ~s~n", [UserName]),
+            Response;
+        {error, Reason} ->
+            ?ERROR_MSG("Can not prepare session for user ~s due to ~p~n", [UserName, Reason]),
+            {reject, []}
     end.
 
 accounting_request(_Response, ?ACCT_START, Request, _Client) ->
