@@ -115,6 +115,7 @@ accounting_request(_Response, ?ACCT_STOP, Request, _Client) ->
     case iptraffic_session:stop(SID) of
         {ok, State} ->
             ok = supervisor:delete_child(iptraffic_sup, {session, State#ipt_session.username}),
+            netspire_hooks:run(ippool_release_ip, [Request]),
             #radius_packet{code = ?ACCT_RESPONSE};
         _Error ->
             noreply
