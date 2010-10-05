@@ -5,7 +5,7 @@
 
 %% API
 -export([start_link/1,
-         lookup_account/4,
+         access_request/3,
          init_session/4,
          accounting_request/4,
          get_option/2]).
@@ -46,7 +46,7 @@ init([Options]) ->
                     ?ERROR_MSG("Cannot determine database backend~n", [])
             end,
             netspire_netflow:add_packet_handler(iptraffic_session, []),
-            netspire_hooks:add(radius_acct_lookup, ?MODULE, lookup_account),
+            netspire_hooks:add(radius_access_request, ?MODULE, access_request),
             netspire_hooks:add(radius_access_accept, ?MODULE, init_session),
             netspire_hooks:add(radius_acct_request, ?MODULE, accounting_request),
             Timeout = proplists:get_value(session_timeout, Options, 60) * 1000,
@@ -56,13 +56,19 @@ init([Options]) ->
             {stop, Error}
     end.
 
-lookup_account(_Value, _Request, UserName, _Client) ->
-    case netspire_hooks:run_fold(iptraffic_fetch_account, undefined, [UserName]) of
-        {ok, Data} ->
-            Response = {ok, Data},
-            {stop, Response};
-        undefined ->
-            {stop, undefined}
+access_request(_Value, Request, _Client) ->
+    case radius_util:verify_requirements(Request, ?MODULE) of
+        false ->
+            {stop, Request};
+        true ->
+            UserName = radius:attribute_value("User-Name", Request),
+            case netspire_hooks:run_fold(iptraffic_fetch_account, undefined, [UserName]) of
+                {ok, Data} ->
+                    Response = {auth, Data},
+                    {stop, Response};
+                undefined ->
+                    {stop, undefined}
+            end
     end.
 
 init_session(Response, Request, Extra, Client) ->
