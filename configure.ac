@@ -1,4 +1,4 @@
-AC_INIT([Netspire modules], [0.1], [], [])
+AC_INIT([Netspire IPTraffic], [0.1], [], [])
 
 AC_PREREQ(0.1)
 
