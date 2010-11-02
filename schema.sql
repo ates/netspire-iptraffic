@@ -59,24 +59,34 @@ $$ LANGUAGE plpgsql;
 
 -- SQL based tariff plans
 
+DROP TABLE iptraffic_directions;
+DROP TABLE iptraffic_classes;
+DROP TABLE iptraffic_periods;
+DROP TABLE iptraffic_plans;
+
+DROP SEQUENCE iptraffic_plans_id_seq CASCADE;
+DROP SEQUENCE iptraffic_directions_id_seq CASCADE;
+DROP SEQUENCE iptraffic_classes_id_seq CASCADE;
+DROP SEQUENCE iptraffic_periods_id_seq CASCADE;
+
 CREATE SEQUENCE iptraffic_plans_id_seq;
 CREATE SEQUENCE iptraffic_directions_id_seq;
 CREATE SEQUENCE iptraffic_classes_id_seq;
 CREATE SEQUENCE iptraffic_periods_id_seq;
 
 CREATE TABLE iptraffic_plans(
-    id INTEGER NOT NULL DEFAULT NEXTVAL('iptraffic_plans_id_seq'::regclass),
+    id INTEGER NOT NULL DEFAULT NEXTVAL('iptraffic_plans_id_seq'::regclass) PRIMARY KEY,
     name VARCHAR NOT NULL);
 
-CREATE TABLE iptraffic_directions(
-    id INTEGER NOT NULL DEFAULT NEXTVAL('iptraffic_directions_id_seq'::regclass),
-    plan_id INTEGER NOT NULL,
-    class_id INTEGER NOT NULL,
-    cost NUMERIC(20,10) NOT NULL);
+CREATE TABLE iptraffic_periods(
+    id INTEGER NOT NULL DEFAULT NEXTVAL('iptraffic_periods_id_seq'::regclass) PRIMARY KEY,
+    name VARCHAR NOT NULL,
+    hours VARCHAR DEFAULT '00:00:00-23:59:59',
+    days VARCHAR DEFAULT '1,2,3,4,5,6,7');
 
 CREATE TABLE iptraffic_classes(
-    id INTEGER NOT NULL DEFAULT NEXTVAL('iptraffic_classes_id_seq'::regclass),
-    period_id INTEGER NOT NULL,
+    id INTEGER NOT NULL DEFAULT NEXTVAL('iptraffic_classes_id_seq'::regclass) PRIMARY KEY,
+    period_id INTEGER NOT NULL REFERENCES iptraffic_periods(id),
     name VARCHAR NOT NULL,
     src INET NOT NULL,
     dst INET NOT NULL,
@@ -84,11 +94,11 @@ CREATE TABLE iptraffic_classes(
     dst_port INTEGER,
     proto VARCHAR);
 
-CREATE TABLE iptraffic_periods(
-    id INTEGER NOT NULL DEFAULT NEXTVAL('iptraffic_periods_id_seq'::regclass),
-    name VARCHAR NOT NULL,
-    hours VARCHAR DEFAULT '00:00:00-23:59:59',
-    days VARCHAR DEFAULT '1,2,3,4,5,6,7');
+CREATE TABLE iptraffic_directions(
+    id INTEGER NOT NULL DEFAULT NEXTVAL('iptraffic_directions_id_seq'::regclass) PRIMARY KEY,
+    plan_id INTEGER NOT NULL REFERENCES iptraffic_plans(id),
+    class_id INTEGER NOT NULL REFERENCES iptraffic_classes(id),
+    cost NUMERIC(20,10) NOT NULL);
 
 CREATE OR REPLACE FUNCTION iptraffic_load_tariffs() RETURNS TABLE(
     plan_name VARCHAR,
@@ -102,11 +112,11 @@ CREATE OR REPLACE FUNCTION iptraffic_load_tariffs() RETURNS TABLE(
     days VARCHAR,
     cost FLOAT) AS $$
 BEGIN
-    RETURN QUERY SELECT plan.name, class.name, class.src, class.dst, class.src_port, class.dst_port, class.proto, period.hours, period.days, dir.cost::FLOAT
+    RETURN QUERY SELECT DISTINCT plan.name, class.name, class.src, class.dst, class.src_port, class.dst_port, class.proto, period.hours, period.days, dir.cost::FLOAT
     FROM iptraffic_directions dir 
     LEFT OUTER JOIN iptraffic_classes class ON dir.class_id = class.id
     LEFT OUTER JOIN iptraffic_periods period ON class.period_id = period.id
-    FULL OUTER JOIN iptraffic_plans plan ON dir.plan_id = plan.id;
+    LEFT OUTER JOIN iptraffic_plans plan ON dir.plan_id = plan.id ORDER BY 1;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -117,27 +127,10 @@ INSERT INTO iptraffic_plans(name) VALUES('Ultimate');
 INSERT INTO iptraffic_plans(name) VALUES('Daylight');
 INSERT INTO iptraffic_plans(name) VALUES('Unlimited'); -- 0 cost to all directions
 
--- Directions
--- For Ultimate tariff
-INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(1, 2, 1);
-INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(1, 3, 1);
-INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(1, 4, 1);
-INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(1, 4, 1);
-INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(1, 6, 5);
-INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(1, 7, 0);
-INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(1, 2, 1);
-INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(1, 1, 0);
-
--- For Daylight tariff
-INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(2, 2, 0.5);
-INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(2, 3, 0.7);
-INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(2, 4, 0.5);
-INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(2, 4, 2);
-INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(2, 7, 0);
-INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(2, 1, 0);
-
--- For Unlimited tariff
-INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(3, 8, 0);
+-- Periods
+INSERT INTO iptraffic_periods(name) VALUES('All Day');
+INSERT INTO iptraffic_periods(name, hours) VALUES('Night', '22:00:00-08:00:00');
+INSERT INTO iptraffic_periods(name, hours) VALUES('Day', '08:00:00-21:59:59');
 
 -- Classes
 INSERT INTO iptraffic_classes(period_id, name, src, dst) VALUES(
@@ -164,8 +157,25 @@ INSERT INTO iptraffic_classes(period_id, name, src, dst) VALUES(
 INSERT INTO iptraffic_classes(period_id, name, src, dst) VALUES(
     1, 'FREE', '0.0.0.0/0', '0.0.0.0/0');
 
--- Periods
-INSERT INTO iptraffic_periods(name) VALUES('All Day');
-INSERT INTO iptraffic_periods(name, hours) VALUES('Night', '22:00:00-08:00:00');
-INSERT INTO iptraffic_periods(name, hours) VALUES('Day', '08:00:00-21:59:59');
+-- Directions
+-- For Ultimate tariff
+INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(1, 2, 1);
+INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(1, 3, 1);
+INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(1, 4, 1);
+INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(1, 4, 1);
+INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(1, 6, 5);
+INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(1, 7, 0);
+INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(1, 2, 1);
+INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(1, 1, 0);
+
+-- For Daylight tariff
+INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(2, 2, 0.5);
+INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(2, 3, 0.7);
+INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(2, 4, 0.5);
+INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(2, 4, 2);
+INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(2, 7, 0);
+INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(2, 1, 0);
+
+-- For Unlimited tariff
+INSERT INTO iptraffic_directions(plan_id, class_id, cost) VALUES(3, 8, 0);
 
