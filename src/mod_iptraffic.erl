@@ -35,25 +35,20 @@ stop() ->
 
 init([Options]) ->
     process_flag(trap_exit, true),
-    Config = proplists:get_value(tariffs_config, Options, []),
-    case iptraffic_tariffs:init(Config) of
-        ok ->
-            case application:get_env(netspire, database_backend) of
-                {ok, Name} ->
-                    Module = lists:concat([?MODULE, "_", Name]),
-                    gen_module:start_module(list_to_atom(Module), []);
-                undefined ->
-                    ?ERROR_MSG("Cannot determine database backend~n", [])
-            end,
+    case application:get_env(netspire, database_backend) of
+        {ok, Name} ->
+            Module = lists:concat([?MODULE, "_", Name]),
+            gen_module:start_module(list_to_atom(Module), []),
+            iptraffic_tariffs:init(),
             netspire_netflow:add_packet_handler(iptraffic_session, []),
             netspire_hooks:add(radius_access_request, ?MODULE, access_request),
             netspire_hooks:add(radius_access_accept, ?MODULE, init_session),
             netspire_hooks:add(radius_acct_request, ?MODULE, accounting_request),
-            Timeout = proplists:get_value(session_timeout, Options, 60) * 1000,
-            timer:send_interval(Timeout, expire_all),
+            Timeout = proplists:get_value(session_timeout, Options, 60) * 1000, timer:send_interval(Timeout, expire_all),
             {ok, no_state};
-        Error ->
-            {stop, Error}
+        undefined ->
+            ?ERROR_MSG("Cannot determine database backend~n", []),
+            {stop, error}
     end.
 
 access_request(_Value, Request, _Client) ->
