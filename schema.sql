@@ -76,13 +76,17 @@ CREATE SEQUENCE iptraffic_periods_id_seq;
 
 CREATE TABLE iptraffic_plans(
     id INTEGER NOT NULL DEFAULT NEXTVAL('iptraffic_plans_id_seq'::regclass) PRIMARY KEY,
-    name VARCHAR NOT NULL);
+    name VARCHAR NOT NULL,
+    created_at TIMESTAMP WITHOUT TIME ZONE,
+    updated_at TIMESTAMP WITHOUT TIME ZONE);
 
 CREATE TABLE iptraffic_periods(
     id INTEGER NOT NULL DEFAULT NEXTVAL('iptraffic_periods_id_seq'::regclass) PRIMARY KEY,
     name VARCHAR NOT NULL,
     hours VARCHAR DEFAULT '00:00:00-23:59:59',
-    days VARCHAR DEFAULT '1,2,3,4,5,6,7');
+    days VARCHAR DEFAULT '1,2,3,4,5,6,7',
+    created_at TIMESTAMP WITHOUT TIME ZONE,
+    updated_at TIMESTAMP WITHOUT TIME ZONE);
 
 CREATE TABLE iptraffic_classes(
     id INTEGER NOT NULL DEFAULT NEXTVAL('iptraffic_classes_id_seq'::regclass) PRIMARY KEY,
@@ -92,13 +96,17 @@ CREATE TABLE iptraffic_classes(
     dst INET NOT NULL,
     src_port INTEGER,
     dst_port INTEGER,
-    proto VARCHAR);
+    proto VARCHAR,
+    created_at TIMESTAMP WITHOUT TIME ZONE,
+    updated_at TIMESTAMP WITHOUT TIME ZONE);
 
 CREATE TABLE iptraffic_directions(
     id INTEGER NOT NULL DEFAULT NEXTVAL('iptraffic_directions_id_seq'::regclass) PRIMARY KEY,
     plan_id INTEGER NOT NULL REFERENCES iptraffic_plans(id),
     class_id INTEGER NOT NULL REFERENCES iptraffic_classes(id),
-    cost NUMERIC(20,10) NOT NULL);
+    cost NUMERIC(20,10) NOT NULL,
+    created_at TIMESTAMP WITHOUT TIME ZONE,
+    updated_at TIMESTAMP WITHOUT TIME ZONE);
 
 CREATE OR REPLACE FUNCTION iptraffic_load_tariffs() RETURNS TABLE(
     plan_name VARCHAR,
