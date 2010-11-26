@@ -18,7 +18,6 @@ all-recursive clean-recursive distclean-recursive install-recursive:
 
 install: all
 	install -m 644 ebin/*.beam $(BEAMDIR)
-	install -m 644 tariffs.conf.sample $(ETCDIR)
 
 clean: clean-recursive
 	rm -rf ebin
