@@ -46,7 +46,8 @@ init([Options]) ->
                     netspire_hooks:add(radius_access_request, ?MODULE, access_request),
                     netspire_hooks:add(radius_access_accept, ?MODULE, init_session),
                     netspire_hooks:add(radius_acct_request, ?MODULE, accounting_request),
-                    Timeout = proplists:get_value(session_timeout, Options, 60) * 1000, timer:send_interval(Timeout, expire_all),
+                    Timeout = proplists:get_value(session_timeout, Options, 60) * 1000,
+                    timer:send_interval(Timeout, expire_all),
                     {ok, no_state};
                 undefined ->
                     ?ERROR_MSG("Cannot determine database backend~n", []),
