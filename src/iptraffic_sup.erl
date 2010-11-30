@@ -78,6 +78,9 @@ resume_session(Key, Count) ->
     end.
 
 uuid_v4() ->
+    {A1, A2, A3} = now(),
+    random:seed(A1, A2, A3),
+
     % round(math:pow(2, N)) where N = 48, 12, 32, 30
     R1 = random:uniform(281474976710656) - 1,
     R2 = random:uniform(4096) - 1,
