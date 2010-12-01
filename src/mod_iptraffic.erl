@@ -72,19 +72,17 @@ access_request(_Value, Request, _Client) ->
     end.
 
 init_session(Response, Request, Extra, Client) ->
-    case netspire_hooks:run_fold(ippool_lease_ip, Response, []) of
-        NewResponse when is_record(NewResponse, radius_packet) ->
-            UserName = radius:attribute_value("User-Name", Request),
-            case iptraffic_sup:init_session(UserName) of
-                {ok, Pid} ->
-                    prepare_session(Pid, UserName, Extra, NewResponse, Client);
-                {ok, Pid, _Info} ->
-                    prepare_session(Pid, UserName, Extra, NewResponse, Client);
-                {error, Reason}->
-                    ?ERROR_MSG("Can not initialize session for user ~s due to ~p~n", [UserName, Reason]),
-                    {reject, []}
-            end;
-        Error -> Error
+    UserName = radius:attribute_value("User-Name", Request),
+    case iptraffic_sup:init_session(UserName) of
+        {ok, Pid} ->
+            NewResponse = netspire_hooks:run_fold(ippool_lease_ip, Response, []),
+            prepare_session(Pid, UserName, Extra, NewResponse, Client);
+        %{ok, Pid, _Info} -> % init_session will never return {ok, Pid, _Info}
+        %    NewResponse = netspire_hooks:run_fold(ippool_lease_ip, Response, []),
+        %    prepare_session(Pid, UserName, Extra, NewResponse, Client);
+        {error, Reason}->
+            ?ERROR_MSG("Can not initialize session for user ~s due to ~p~n", [UserName, Reason]),
+            {reject, []}
     end.
 
 prepare_session(Pid, UserName, Extra, Response, Client) ->
