@@ -22,3 +22,5 @@ You MUST set **Acct-Interim-Interval** RADIUS attribute for client. This attribu
 Note that if Netspire does not receiving interim updates from NAS via RADIUS, sessions will be marked as *expired* and closed, regardless of real state on NAS.
 
 Be aware about **Acct-Interim-Interval** radius attribute limitation for Linux pppd. It should be no less then 60 seconds.
+
+Also you need to load SQL schema objects from schema.sql file to the already created database.
