@@ -1,25 +1,25 @@
 -- Drop schema objects
 
-DROP FUNCTION auth(VARCHAR);
-DROP FUNCTION iptraffic_start_session(VARCHAR, VARCHAR, VARCHAR, TIMESTAMP);
-DROP FUNCTION iptraffic_stop_session(VARCHAR, VARCHAR, TIMESTAMP, BIGINT, BIGINT, FLOAT, BOOLEAN);
-DROP FUNCTION iptraffic_sync_session(VARCHAR, VARCHAR, TIMESTAMP, BIGINT, BIGINT, FLOAT);
+DROP FUNCTION IF EXISTS auth(VARCHAR);
+DROP FUNCTION IF EXISTS iptraffic_start_session(VARCHAR, VARCHAR, VARCHAR, TIMESTAMP);
+DROP FUNCTION IF EXISTS iptraffic_stop_session(VARCHAR, VARCHAR, TIMESTAMP, BIGINT, BIGINT, FLOAT, BOOLEAN);
+DROP FUNCTION IF EXISTS iptraffic_sync_session(VARCHAR, VARCHAR, TIMESTAMP, BIGINT, BIGINT, FLOAT);
 
-DROP TABLE iptraffic_sessions;
-DROP TABLE assigned_radius_replies;
-DROP TABLE radius_replies;
-DROP TABLE accounts;
-DROP TABLE plans;
-DROP TABLE users;
+DROP TABLE IF EXISTS iptraffic_sessions;
+DROP TABLE IF EXISTS assigned_radius_replies;
+DROP TABLE IF EXISTS radius_replies;
+DROP TABLE IF EXISTS accounts;
+DROP TABLE IF EXISTS plans;
+DROP TABLE IF EXISTS users;
 
-DROP SEQUENCE iptraffic_sessions_id_seq CASCADE;
-DROP SEQUENCE assigned_radius_replies_id_seq CASCADE;
-DROP SEQUENCE radius_replies_id_seq CASCADE;
-DROP SEQUENCE accounts_id_seq CASCADE;
-DROP SEQUENCE plans_id_seq CASCADE;
-DROP SEQUENCE users_id_seq CASCADE;
+DROP SEQUENCE IF EXISTS iptraffic_sessions_id_seq CASCADE;
+DROP SEQUENCE IF EXISTS assigned_radius_replies_id_seq CASCADE;
+DROP SEQUENCE IF EXISTS radius_replies_id_seq CASCADE;
+DROP SEQUENCE IF EXISTS accounts_id_seq CASCADE;
+DROP SEQUENCE IF EXISTS plans_id_seq CASCADE;
+DROP SEQUENCE IF EXISTS users_id_seq CASCADE;
 
-DROP LANGUAGE plpgsql;
+DROP LANGUAGE IF EXISTS plpgsql;
 
 -- Create schema objects
 CREATE LANGUAGE plpgsql;
