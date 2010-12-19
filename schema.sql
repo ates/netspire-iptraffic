@@ -74,7 +74,7 @@ CREATE TABLE radius_replies(
 
 CREATE TABLE assigned_radius_replies(
     id INTEGER NOT NULL DEFAULT NEXTVAL('assigned_radius_replies_id_seq') PRIMARY KEY,
-    target_id INTEGER NOT NULL REFERENCES accounts(id),
+    target_id INTEGER NOT NULL,
     target_type VARCHAR(128) NOT NULL,
     radius_reply_id INTEGER NOT NULL REFERENCES radius_replies(id),
     value VARCHAR(128) NOT NULL,
@@ -104,9 +104,9 @@ CREATE OR REPLACE FUNCTION auth(VARCHAR) RETURNS TABLE(
     value VARCHAR) AS $$
 BEGIN
     RETURN QUERY SELECT t0.password, t0.balance::FLOAT, t1.code, t3.name, t2.value FROM accounts t0
-        LEFT OUTER JOIN plans t1 ON (t0.plan_id = t1.id)
+        LEFT OUTER JOIN plans t1 ON t0.plan_id = t1.id
         LEFT OUTER JOIN assigned_radius_replies t2
-            ON (t2.target_id = t0.id AND t2.target_type = 'Account')
+            ON (t2.target_id = t0.id AND t2.target_type = 'Account') OR (t2.target_id = t0.plan_id AND t2.target_type = 'Plan')
         LEFT OUTER JOIN radius_replies t3 ON t3.id = t2.radius_reply_id
     WHERE t0.login = $1 AND (t0.balance IS NOT NULL AND t0.balance > 0) AND t0.plan_id IS NOT NULL AND t0.active = TRUE;
 END;
@@ -157,6 +157,8 @@ $$ LANGUAGE plpgsql;
 INSERT INTO users(login, password, email, balance, active) VALUES('joel', 'secret', 'joel@example.com', 100, TRUE);
 
 INSERT INTO plans(name, code) VALUES('Standard traffic plan', 'Standard');
+INSERT INTO plans(name, code) VALUES('Unlimited 512 Kbit', 'Unlimited 512');
+INSERT INTO plans(name, code) VALUES('Unlimited 1024 kbit ', 'Unlimited 1024');
 
 INSERT INTO accounts(user_id, plan_id, login, password, balance, active) VALUES(1, 1, 'joel', 'secret', 100, TRUE);
 
@@ -171,3 +173,9 @@ INSERT INTO radius_replies(name, description) VALUES('Netspire-Downstream-Speed-
 INSERT INTO assigned_radius_replies(target_id, target_type, radius_reply_id, value) VALUES(1, 'Account', 1, '65');
 INSERT INTO assigned_radius_replies(target_id, target_type, radius_reply_id, value) VALUES(1, 'Account', 3, '2'); -- value is Framed-User
 INSERT INTO assigned_radius_replies(target_id, target_type, radius_reply_id, value) VALUES(1, 'Account', 4, '1'); -- value is PPP
+
+-- Tariff's radius replies
+INSERT INTO assigned_radius_replies(target_id, target_type, radius_reply_id, value) VALUES(2, 'Plan', 7, '512');
+INSERT INTO assigned_radius_replies(target_id, target_type, radius_reply_id, value) VALUES(2, 'Plan', 6, '64');
+INSERT INTO assigned_radius_replies(target_id, target_type, radius_reply_id, value) VALUES(3, 'Plan', 7, '1024');
+INSERT INTO assigned_radius_replies(target_id, target_type, radius_reply_id, value) VALUES(3, 'Plan', 6, '128');
