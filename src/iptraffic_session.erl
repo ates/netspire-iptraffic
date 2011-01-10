@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, prepare/4, start/3, interim/1, stop/1, expire/1, handle_packet/2]).
+-export([start_link/1, prepare/4, start/3, interim/1, stop/1, expire/1, handle_packet/2, list/0, list/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -58,6 +58,14 @@ expire(SID) ->
 
 handle_packet(_SrcIP, Pdu) ->
     process_netflow_packet(Pdu).
+
+%% Shows all registered sessions
+list() ->
+    lists:map(fun(SID) -> list(SID) end, mnesia:dirty_all_keys(ipt_session)).
+
+%% Shows the session by SID
+list(SID) ->
+    [Session] = mnesia:dirty_read({ipt_session, SID}), Session.
 
 init([UUID]) ->
     process_flag(trap_exit, true),
