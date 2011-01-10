@@ -93,7 +93,7 @@ match_net(Network, NetworkMask, IP) when is_tuple(NetworkMask) ->
     end.
 
 load_file(File) ->
-    ?INFO_MSG("Reading tariffs ~s~n", [File]),
+    ?INFO_MSG("Loading tariff plans from ~s~n", [File]),
     case file:consult(File) of
         {ok, Terms} ->
             process_terms(Terms);

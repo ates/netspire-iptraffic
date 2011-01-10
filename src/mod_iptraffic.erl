@@ -35,8 +35,8 @@ stop() ->
 
 init([Options]) ->
     process_flag(trap_exit, true),
-    Config = proplists:get_value(tariffs_config, Options, []),
-    case iptraffic_tariffs:init(Config) of
+    Plans = proplists:get_value(tariffs, Options, []),
+    case iptraffic_tariffs:init(Plans) of
         ok ->
             case application:get_env(netspire, database_backend) of
                 {ok, Name} ->
