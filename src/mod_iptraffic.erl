@@ -67,7 +67,6 @@ access_request(_Value, Request, _Client) ->
                     Response = {auth, Data},
                     {stop, Response};
                 undefined ->
-                    ?WARNING_MSG("No found such user ~s~n", [UserName]),
                     {stop, undefined}
             end
     end.
