@@ -2,7 +2,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start/1, start_link/1, stop/0, init_session/1, resume_all/0]).
+-export([start/1, start_link/1, stop/0, init_session/1, resume_all/0, delete_session/2]).
 
 %% supervisor callbacks
 -export([init/1]).
@@ -76,6 +76,11 @@ resume_session(Key, Count) ->
             Next = mnesia:dirty_next(ipt_session, Key),
             resume_session(Next, Count)
     end.
+
+delete_session(Session, Request) ->
+    netspire_hooks:run(ippool_release_ip, [Request]),
+    iptraffic_session:stop(Session#ipt_session.pid),
+    supervisor:delete_child(iptraffic_sup, {session, Session#ipt_session.username}).
 
 uuid_v4() ->
     random:seed(now()),

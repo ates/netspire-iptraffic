@@ -8,6 +8,7 @@
         status,
         started_at,
         expires_at,
+        finished_at,
         pid,
         node,
         nas_spec,

@@ -14,9 +14,12 @@ Configuration
 
 The following modules should be added to the netspire.conf file:
 
-    {mod_iptraffic, [{tariffs, "tariffs.conf"}, {session_timeout, 60}]}
+    {mod_iptraffic, [{tariffs, "tariffs.conf"}, {session_timeout, 60}, {delay_stop, 5}]}
 
 The default value of the **session_timeout** option is 60 seconds and may be ommited.
+
+The ***delay_stop*** option is used to delay stopping of the session to receive all data from netflow sensor after the session closing (After receiving Accounting-Stop packet).
+The default value of the ***delay_stop*** option is 5 seconds and and may be ommited.
 
 You MUST set **Acct-Interim-Interval** RADIUS attribute for client. This attribute is required to prolong session and it's value MUST be significantly less than **session_timeout**.
 Note that if Netspire does not receiving interim updates from NAS via RADIUS, sessions will be marked as *expired* and closed, regardless of real state on NAS.

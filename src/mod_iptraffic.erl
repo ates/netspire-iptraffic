@@ -118,8 +118,8 @@ accounting_request(_Response, ?ACCT_STOP, Request, _Client) ->
     SID = radius:attribute_value("Acct-Session-Id", Request),
     case iptraffic_session:stop(SID) of
         {ok, State} ->
-            ok = supervisor:delete_child(iptraffic_sup, {session, State#ipt_session.username}),
-            netspire_hooks:run(ippool_release_ip, [Request]),
+            Timeout = gen_module:get_option(?MODULE, delay_stop, 5),
+            {ok, _} = timer:apply_after(Timeout * 1000, iptraffic_sup, delete_session, [State, Request]),
             #radius_packet{code = ?ACCT_RESPONSE};
         _Error ->
             noreply

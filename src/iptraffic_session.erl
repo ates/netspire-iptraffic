@@ -135,15 +135,17 @@ handle_call(interim, _From, State) ->
     end;
 handle_call(stop, _From, State) ->
     case stop_session(State, false) of
-        ok ->
-            Reply = {ok, State},
+        {ok, NewState} ->
+            Reply = {ok, NewState},
             {stop, normal, Reply, State};
+        {preclosed, NewState} ->
+            {reply, {ok, NewState}, NewState};
         _Error ->
             {reply, {error, backend_failure}, State}
     end;
 handle_call(expire, _From, State) ->
     case stop_session(State, true) of
-        ok ->
+        {ok, _} ->
             {stop, normal, ok, State};
         _Error ->
             {reply, {error, backend_failure}, State}
@@ -180,15 +182,29 @@ terminate(Reason, State) ->
 stop_session(#ipt_session{status = new} = Session, _Expired) ->
     ?INFO_MSG("Discarding session: ~s~n", [to_string(Session)]),
     mnesia:dirty_delete_object(Session);
-stop_session(Session, Expired) ->
-    #ipt_session{sid = SID, username = UserName, data = Data} = Session,
+stop_session(#ipt_session{status = preclosed} = Session, Expired) ->
+    #ipt_session{sid = SID, username = UserName, finished_at = FinishedAt, data = Data} = Session,
     #ipt_data{octets_in = In, octets_out = Out, amount = Amount} = Data,
-    case netspire_hooks:run_fold(iptraffic_stop_session, undef, [UserName, SID, now(), In, Out, Amount, Expired]) of
+    case netspire_hooks:run_fold(iptraffic_stop_session, undef, [UserName, SID, FinishedAt, In, Out, Amount, Expired]) of
         ok ->
             mnesia:dirty_delete_object(Session),
-            ok;
+            {ok, Session};
         Error ->
             {error, Error}
+    end;
+stop_session(Session, Expired) ->
+    NewState = Session#ipt_session{status = preclosed, finished_at = now()},
+    case mnesia:transaction(fun() -> mnesia:write(NewState) end) of
+        {atomic, ok} ->
+            case Expired of
+                true ->
+                    stop_session(NewState, Expired);
+                false ->
+                    ?INFO_MSG("Session ~s changed to preclosed~n", [to_string(NewState)]),
+                    {preclosed, NewState}
+            end;
+        Error ->
+            ?INFO_MSG("Cannot change status of session ~s due to ~p~n", [to_string(NewState), Error])
     end.
 
 process_netflow_packet({H, Records}) when is_record(H, nfh_v5) ->
@@ -215,7 +231,7 @@ match_session(SrcIP, DstIP) ->
     F = fun() ->
             Q = qlc:q([X || X <- mnesia:table(ipt_session),
                 (X#ipt_session.ip == SrcIP orelse X#ipt_session.ip == DstIP) andalso
-                 X#ipt_session.status == active]),
+                 (X#ipt_session.status == active orelse X#ipt_session.status == preclosed)]),
             qlc:e(Q)
     	end,
     case mnesia:ets(F) of
