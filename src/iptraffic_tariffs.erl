@@ -12,10 +12,8 @@
     time,
     dir,
     src_net,
-    src_mask,
     src_port,
     dst_net,
-    dst_mask,
     dst_port,
     proto
 }).
@@ -58,8 +56,8 @@ match_rule(any, _) ->
 match_rule(Rule, Args) ->
     match_time(Rule#netflow_rule.time, Args#ipt_args.sec) andalso
     (Rule#netflow_rule.dir == Args#ipt_args.dir orelse Rule#netflow_rule.dir == any) andalso
-    match_net(Rule#netflow_rule.src_net, Rule#netflow_rule.src_mask, Args#ipt_args.src_ip) andalso
-    match_net(Rule#netflow_rule.dst_net, Rule#netflow_rule.dst_mask, Args#ipt_args.dst_ip) andalso
+    ip:in_range(Args#ipt_args.src_ip, Rule#netflow_rule.src_net) andalso
+    ip:in_range(Args#ipt_args.dst_ip, Rule#netflow_rule.dst_net) andalso
     (Rule#netflow_rule.src_port == Args#ipt_args.src_port orelse Rule#netflow_rule.src_port == any) andalso
     (Rule#netflow_rule.src_port == Args#ipt_args.dst_port orelse Rule#netflow_rule.dst_port == any) andalso
     (Rule#netflow_rule.proto == Args#ipt_args.proto orelse Rule#netflow_rule.proto == any).
@@ -72,27 +70,6 @@ match_time({Start, End}, Time) when End >= Start ->
     Time >= Start andalso Time =< End;
 match_time({Start, End}, Time) when End < Start ->
     Time >= Start orelse Time =< End.
-
-
-%% TODO: Use ip:in_range instead of this match_net functions
-match_net(Network, NetworkMask, IP) when is_integer(NetworkMask) ->
-    IPInt = ip:ip2long(IP),
-    NetworkInt = ip:ip2long(Network),
-    Mask = 16#ffffffff bsl (32 - NetworkMask),
-    if
-        (IPInt band Mask) == (NetworkInt band Mask) ->
-            true;
-        true -> false
-    end;
-match_net(Network, NetworkMask, IP) when is_tuple(NetworkMask) ->
-    IPInt = ip:ip2long(IP),
-    NetworkInt = ip:ip2long(Network),
-    MaskInt = ip:ip2long(NetworkMask),
-    if
-        (IPInt band MaskInt) == NetworkInt ->
-            true;
-        true -> false
-    end.
 
 load_file(File) ->
     ?INFO_MSG("Loading tariff plans from ~s~n", [File]),
@@ -135,38 +112,19 @@ read_class([{Name, PeriodName, Direction, Rules} | Tail], Idx, Periods) ->
 write_rule(Class, Period, Direction, Rule, Idx) ->
     SrcRule = proplists:get_value(src, Rule),
     DstRule = proplists:get_value(dst, Rule),
-    {SrcNet, SrcMask, SrcPort} = expand_net(SrcRule),
-    {DstNet, DstMask, DstPort} = expand_net(DstRule),
     Proto = proplists:get_value(proto, Rule, any),
     Rec = #netflow_rule{
         idx = Idx,
         class = Class,
         time = Period,
         dir = Direction,
-        src_net = SrcNet,
-        src_mask = SrcMask,
-        src_port = SrcPort,
-        dst_net = DstNet,
-        dst_mask = DstMask,
-        dst_port = DstPort,
+        src_net = proplists:get_value(net, SrcRule),
+        src_port = proplists:get_value(port, SrcRule, any),
+        dst_net = proplists:get_value(net, DstRule),
+        dst_port = proplists:get_value(port, SrcRule, any),
         proto = proto(Proto)
     },
     ets:insert(iptraffic_rules, Rec).
-
-expand_net(Rule) ->
-    {Addr, Mask} =
-        case proplists:get_value(net, Rule) of
-            {A, M} ->
-                {ok, A1} = inet_parse:address(A),
-                {ok, M1} = inet_parse:address(M),
-                {A1, M1};
-            Net when is_list(Net) ->
-                [A, M] = string:tokens(Net, "/"),
-                {ok, A1} = inet_parse:address(A),
-                {A1, list_to_integer(M)}
-        end,
-    Port = proplists:get_value(port, Rule, any),
-    {Addr, Mask, Port}.
 
 read_time([], Acc) ->
     lists:reverse(Acc);
