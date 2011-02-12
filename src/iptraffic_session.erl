@@ -214,8 +214,8 @@ process_netflow_packet(_Pdu) ->
     ?WARNING_MSG("Unsupported NetFlow version~n", []).
 
 match_record(H, Rec) ->
-    SrcIP = netspire_util:ipconv(Rec#nfrec_v5.src_addr),
-    DstIP = netspire_util:ipconv(Rec#nfrec_v5.dst_addr),
+    SrcIP = ip:long2ip(Rec#nfrec_v5.src_addr),
+    DstIP = ip:long2ip(Rec#nfrec_v5.dst_addr),
     case match_session(SrcIP, DstIP) of
         {ok, Matches} ->
             Fun = fun({Dir, Session}) ->
@@ -257,8 +257,8 @@ build_iptraffic_args(H, Rec, Direction) when is_record(H, nfh_v5) ->
     {_Days, Time} = calendar:seconds_to_daystime(H#nfh_v5.unix_secs),
     Args = #ipt_args{
         sec = calendar:time_to_seconds(Time),
-        src_ip = netspire_util:ipconv(Rec#nfrec_v5.src_addr),
-        dst_ip = netspire_util:ipconv(Rec#nfrec_v5.dst_addr),
+        src_ip = ip:long2ip(Rec#nfrec_v5.src_addr),
+        dst_ip = ip:long2ip(Rec#nfrec_v5.dst_addr),
         src_port = Rec#nfrec_v5.src_port,
         dst_port = Rec#nfrec_v5.dst_port,
         proto = Rec#nfrec_v5.prot,

@@ -73,9 +73,11 @@ match_time({Start, End}, Time) when End >= Start ->
 match_time({Start, End}, Time) when End < Start ->
     Time >= Start orelse Time =< End.
 
+
+%% TODO: Use ip:in_range instead of this match_net functions
 match_net(Network, NetworkMask, IP) when is_integer(NetworkMask) ->
-    IPInt = netspire_util:ipconv(IP),
-    NetworkInt = netspire_util:ipconv(Network),
+    IPInt = ip:ip2long(IP),
+    NetworkInt = ip:ip2long(Network),
     Mask = 16#ffffffff bsl (32 - NetworkMask),
     if
         (IPInt band Mask) == (NetworkInt band Mask) ->
@@ -83,9 +85,9 @@ match_net(Network, NetworkMask, IP) when is_integer(NetworkMask) ->
         true -> false
     end;
 match_net(Network, NetworkMask, IP) when is_tuple(NetworkMask) ->
-    IPInt = netspire_util:ipconv(IP),
-    NetworkInt = netspire_util:ipconv(Network),
-    MaskInt = netspire_util:ipconv(NetworkMask),
+    IPInt = ip:ip2long(IP),
+    NetworkInt = ip:ip2long(Network),
+    MaskInt = ip:ip2long(NetworkMask),
     if
         (IPInt band MaskInt) == NetworkInt ->
             true;
