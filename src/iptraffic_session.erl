@@ -174,6 +174,11 @@ code_change(_OldVsn, State, _Extra) ->
 terminate(normal, State) ->
     ?INFO_MSG("Session ~s finished successfully~n", [to_string(State)]);
 terminate(shutdown, State) ->
+    case gen_module:get_option(mod_iptraffic, disconnect_on_shutdown, yes) of
+        yes ->
+            disconnect_client(State);
+        _ -> ok
+    end,
     stop_session(State, false),
     ?INFO_MSG("Session ~s shutted down successfully~n", [to_string(State)]);
 terminate(Reason, State) ->
