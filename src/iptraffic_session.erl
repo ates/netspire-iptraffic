@@ -235,10 +235,10 @@ match_record(H, Rec) ->
 match_session(SrcIP, DstIP) ->
     F = fun() ->
             Q = qlc:q([X || X <- mnesia:table(ipt_session),
-                (X#ipt_session.ip == SrcIP orelse X#ipt_session.ip == DstIP) andalso
-                 (X#ipt_session.status == active orelse X#ipt_session.status == preclosed)]),
+                    (X#ipt_session.ip == SrcIP orelse X#ipt_session.ip == DstIP) andalso
+                    (X#ipt_session.status == active orelse X#ipt_session.status == preclosed)]),
             qlc:e(Q)
-    	end,
+    end,
     case mnesia:ets(F) of
         [] ->
             ?WARNING_MSG("No active sessions matching flow src/dst: ~s/~s~n",
@@ -316,12 +316,12 @@ update_session_state(Session, Args, Amount) ->
     #ipt_args{dir = Direction, octets = Octets} = Args,
     NewAmount = Amount + Data#ipt_data.amount,
     NewData =
-		case Direction of
-        	in ->
-            	Data#ipt_data{amount = NewAmount, octets_in = Data#ipt_data.octets_in + Octets};
-        	out ->
-            	Data#ipt_data{amount = NewAmount, octets_out = Data#ipt_data.octets_out + Octets}
-    	end,
+        case Direction of
+            in ->
+                Data#ipt_data{amount = NewAmount, octets_in = Data#ipt_data.octets_in + Octets};
+            out ->
+                Data#ipt_data{amount = NewAmount, octets_out = Data#ipt_data.octets_out + Octets}
+        end,
     Session#ipt_session{data = NewData}.
 
 fetch(SID) ->
