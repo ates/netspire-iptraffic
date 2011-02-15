@@ -64,12 +64,21 @@ match_rule(Rule, Args) ->
 
 match_time(any, _) ->
     true;
-match_time({0, 0}, _Time) ->
+match_time({[], 0, 0}, _Time) ->
     true;
-match_time({Start, End}, Time) when End >= Start ->
-    Time >= Start andalso Time =< End;
-match_time({Start, End}, Time) when End < Start ->
-    Time >= Start orelse Time =< End.
+match_time({Days, Start, End}, Time) when End >= Start ->
+    Time >= Start andalso Time =< End andalso is_today(Days);
+match_time({Days, Start, End}, Time) when End < Start ->
+    Time >= Start orelse Time =< End orelse is_today(Days).
+
+is_today(Days) ->
+    case Days of
+        [] -> true;
+        _ ->
+            {Today, _} = erlang:localtime(),
+            DayOfWeek = calendar:day_of_the_week(Today),
+            lists:member(DayOfWeek, Days)
+    end.
 
 load_file(File) ->
     ?INFO_MSG("Loading tariff plans from ~s~n", [File]),
@@ -129,8 +138,10 @@ write_rule(Class, Period, Direction, Rule, Idx) ->
 read_time([], Acc) ->
     lists:reverse(Acc);
 read_time([{Name, Frame} | Tail], Acc) ->
+    read_time([{Name, [], Frame} | Tail], Acc);
+read_time([{Name, Days, Frame} | Tail], Acc) ->
     [Start, End] = string:tokens(Frame, "-"),
-    Acc1 = [{Name, {list_to_seconds(Start), list_to_seconds(End)}} | Acc],
+    Acc1 = [{Name, {Days, list_to_seconds(Start), list_to_seconds(End)}} | Acc],
     read_time(Tail, Acc1).
 
 list_to_time(L) ->
