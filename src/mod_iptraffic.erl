@@ -56,7 +56,7 @@ init([Options]) ->
         Error -> {stop, Error}
     end.
 
-access_request(_Value, Request, _Client) ->
+access_request(_Value, Request, Client) ->
     case radius_util:verify_requirements(Request, ?MODULE) of
         false ->
             {stop, Request};
@@ -64,8 +64,20 @@ access_request(_Value, Request, _Client) ->
             UserName = radius:attribute_value("User-Name", Request),
             case netspire_hooks:run_fold(iptraffic_fetch_account, undefined, [UserName]) of
                 {ok, Data} ->
+                    {_, Attrs, _} = Data,
                     Response = {auth, Data},
-                    {stop, Response};
+                    case proplists:get_value("Netspire-Allowed-NAS", Attrs) of
+                        undefined ->
+                            {stop, Response};
+                        Value ->
+                            Nases = string:tokens(Value, ","),
+                            case lists:member(atom_to_list(Client#nas_spec.name), Nases) of
+                                true ->
+                                    {stop, Response};
+                                false ->
+                                    {stop, undefined}
+                            end
+                    end;
                 undefined ->
                     {stop, undefined}
             end
