@@ -162,13 +162,14 @@ INSERT INTO plans(name, code) VALUES('Unlimited 1024 kbit ', 'Unlimited 1024');
 
 INSERT INTO accounts(user_id, plan_id, login, password, balance, active) VALUES(1, 1, 'joel', 'secret', 100, TRUE);
 
-INSERT INTO radius_replies(name, description) VALUES('Acct-Interim-Interval', 'This attribute indicates the number of seconds between each interim update in seconds for this specific session.');
-INSERT INTO radius_replies(name, description) VALUES('Framed-IP-Address', 'This Attribute indicates the address to be configured for the user.');
-INSERT INTO radius_replies(name, description) VALUES('Service-Type', 'This Attribute indicates the type of service the user has requested, or the type of service to be provided.');
-INSERT INTO radius_replies(name, description) VALUES('Framed-Protocol', 'This Attribute indicates the framing to be used for framed access.');
-INSERT INTO radius_replies(name, description) VALUES('Netspire-Framed-Pool', 'This Attribute indicates the pool of IP addresses that need to use.');
-INSERT INTO radius_replies(name, description) VALUES('Netspire-Upstream-Speed-Limit', 'This Attribute indicates the UpStream speed limit.');
-INSERT INTO radius_replies(name, description) VALUES('Netspire-Downstream-Speed-Limit', 'This Attribute indicates the DownStream speed limit.');
+INSERT INTO radius_replies(name, description) VALUES('Acct-Interim-Interval', 'This attribute indicates the number of seconds between each interim update in seconds for this specific session');
+INSERT INTO radius_replies(name, description) VALUES('Framed-IP-Address', 'This attribute indicates the address to be configured for the user');
+INSERT INTO radius_replies(name, description) VALUES('Service-Type', 'This attribute indicates the type of service the user has requested, or the type of service to be provided');
+INSERT INTO radius_replies(name, description) VALUES('Framed-Protocol', 'This attribute indicates the framing to be used for framed access');
+INSERT INTO radius_replies(name, description) VALUES('Netspire-Framed-Pool', 'This attribute indicates the pool of IP addresses that need to use');
+INSERT INTO radius_replies(name, description) VALUES('Netspire-Upstream-Speed-Limit', 'This attribute indicates the UpStream speed limit');
+INSERT INTO radius_replies(name, description) VALUES('Netspire-Downstream-Speed-Limit', 'This attribute indicates the DownStream speed limit');
+INSERT INTO radius_replies(name, description) VALUES('Netspire-Allowed-NAS', 'This attribute indicates the NAS identifier to which the user may connect');
 
 INSERT INTO assigned_radius_replies(target_id, target_type, radius_reply_id, value) VALUES(1, 'Account', 1, '65');
 INSERT INTO assigned_radius_replies(target_id, target_type, radius_reply_id, value) VALUES(1, 'Account', 3, '2'); -- value is Framed-User

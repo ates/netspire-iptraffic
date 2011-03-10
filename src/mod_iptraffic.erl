@@ -66,15 +66,16 @@ access_request(_Value, Request, Client) ->
                 {ok, Data} ->
                     {_, Attrs, _} = Data,
                     Response = {auth, Data},
-                    case proplists:get_value("Netspire-Allowed-NAS", Attrs) of
-                        undefined ->
+                    case proplists:get_all_values("Netspire-Allowed-NAS", Attrs) of
+                        [] ->
                             {stop, Response};
-                        Value ->
-                            Nases = string:tokens(Value, ","),
-                            case lists:member(atom_to_list(Client#nas_spec.name), Nases) of
+                        NASes ->
+                            case lists:member(atom_to_list(Client#nas_spec.name), NASes) of
                                 true ->
                                     {stop, Response};
                                 false ->
+                                    ?INFO_MSG("User ~s is not allowed to connect to ~p NAS~n",
+                                        [UserName, Client#nas_spec.name]),
                                     {stop, undefined}
                             end
                     end;
