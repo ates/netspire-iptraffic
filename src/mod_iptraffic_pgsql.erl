@@ -79,22 +79,3 @@ process_fetch_account_result(Result) ->
             end;
         _ -> undefined
     end.
-
-process_load_tariffs_result(Result) ->
-    F1 = fun(V) when is_binary(V) ->
-            case catch binary_to_list(V) of
-                L when is_list(L) -> L;
-                _ -> any
-            end;
-        (V) when V == null -> any;
-        (V) -> V
-    end,
-    F = fun(X) -> lists:map(F1, tuple_to_list(X)) end,
-    case Result of
-        {ok, _Columns, Rows} ->
-            case Rows of
-                [] -> undefined;
-                Res -> lists:map(F, Res)
-            end;
-        _ -> undefined
-    end.
