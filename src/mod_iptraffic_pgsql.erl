@@ -2,7 +2,7 @@
 
 -behaviour(gen_module).
 
--export([fetch_account/2, load_tariffs/1, start_session/5, sync_session/7, stop_session/8]).
+-export([fetch_account/2, start_session/5, sync_session/7, stop_session/8]).
 
 %% gen_module callbacks
 -export([start/1, stop/0]).
@@ -24,11 +24,6 @@ stop() ->
 fetch_account(_, UserName) ->
     DbResult = execute("SELECT * FROM auth($1)", [UserName]),
     Result = process_fetch_account_result(DbResult),
-    {stop, Result}.
-
-load_tariffs(_) ->
-    DbResult = execute("SELECT * FROM iptraffic_load_tariffs()", []),
-    Result = process_load_tariffs_result(DbResult),
     {stop, Result}.
 
 start_session(_, UserName, IP, SID, StartedAt) ->
