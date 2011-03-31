@@ -145,6 +145,8 @@ handle_call(stop, _From, State) ->
     end;
 handle_call(expire, _From, State) ->
     case stop_session(State, true) of
+        ok -> % status = new
+            {stop, normal, ok, State};
         {ok, _} ->
             {stop, normal, ok, State};
         _Error ->
