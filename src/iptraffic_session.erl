@@ -307,8 +307,8 @@ disconnect_client(Session) ->
     case netspire_hooks:run_fold(disconnect_client, undef, [UserName, SID, IP, NasSpec]) of
         {ok, _} ->
             ?INFO_MSG("User ~s | SID: ~p successful disconnected~n", [UserName, SID]);
-        Error ->
-            ?ERROR_MSG("Failed to disconnect ~s | SID: ~p due to ~p~n", [UserName, SID, Error])
+        {error, Reason} ->
+            ?ERROR_MSG("Failed to disconnect ~s | SID: ~p due to ~w~n", [UserName, SID, Reason])
     end.
 
 update_session_state(Session, Args, Amount) ->
