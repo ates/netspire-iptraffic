@@ -69,7 +69,7 @@ process_fetch_account_result(Result) ->
                     undefined;
                 Res ->
                     {Password, Balance, Plan, _, _} = lists:nth(1, Res),
-                    Attrs = lists:filter(fun(E) -> E /= undefined end, lists:map(F, Res)),
+                    Attrs = [E || E <- [F(X) || X <- Res], E =/= undefined],
                     {ok, {binary_to_list(Password), Attrs, {Balance, binary_to_list(Plan)}}}
             end;
         _ -> undefined

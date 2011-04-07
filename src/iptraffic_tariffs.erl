@@ -71,14 +71,10 @@ match_time({Days, Start, End}, Time) when End >= Start ->
 match_time({Days, Start, End}, Time) when End < Start ->
     Time >= Start orelse Time =< End orelse is_today(Days).
 
+is_today(Days) when Days =:= [] -> true;
 is_today(Days) ->
-    case Days of
-        [] -> true;
-        _ ->
-            {Today, _} = erlang:localtime(),
-            DayOfWeek = calendar:day_of_the_week(Today),
-            lists:member(DayOfWeek, Days)
-    end.
+    DayOfTheWeek = calendar:day_of_the_week(erlang:date()),
+    lists:member(DayOfTheWeek, Days).
 
 load_file(File) ->
     ?INFO_MSG("Loading tariff plans from ~s~n", [File]),

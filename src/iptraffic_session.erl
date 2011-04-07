@@ -61,7 +61,7 @@ handle_packet(_SrcIP, Pdu) ->
 
 %% Shows all registered sessions
 list() ->
-    lists:map(fun(SID) -> list(SID) end, mnesia:dirty_all_keys(ipt_session)).
+    [list(S) || S <- mnesia:dirty_all_keys(ipt_session)].
 
 %% Shows the session by SID
 list(SID) ->
