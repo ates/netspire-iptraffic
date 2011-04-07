@@ -310,7 +310,7 @@ disconnect_client(Session) ->
         {ok, _} ->
             ?INFO_MSG("User ~s | SID: ~p successful disconnected~n", [UserName, SID]);
         {error, Reason} ->
-            ?ERROR_MSG("Failed to disconnect ~s | SID: ~p due to ~w~n", [UserName, SID, Reason])
+            ?ERROR_MSG("Failed to disconnect ~s | SID: ~p due to ~s~n", [UserName, SID, Reason])
     end.
 
 update_session_state(Session, Args, Amount) ->
