@@ -12,7 +12,6 @@
 start(_Options) ->
     ?INFO_MSG("Starting dynamic module ~p~n", [?MODULE]),
     netspire_hooks:add(iptraffic_fetch_account, ?MODULE, fetch_account),
-    netspire_hooks:add(iptraffic_load_tariffs, ?MODULE, load_tariffs),
     netspire_hooks:add(iptraffic_start_session, ?MODULE, start_session),
     netspire_hooks:add(iptraffic_sync_session, ?MODULE, sync_session),
     netspire_hooks:add(iptraffic_stop_session, ?MODULE, stop_session).
