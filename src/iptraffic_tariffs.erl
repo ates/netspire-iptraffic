@@ -10,7 +10,6 @@
     idx,
     class,
     time,
-    dir,
     src_net,
     src_port,
     dst_net,
@@ -55,7 +54,6 @@ match_rule(any, _) ->
     true;
 match_rule(Rule, Args) ->
     match_time(Rule#netflow_rule.time, Args#ipt_args.sec) andalso
-    (Rule#netflow_rule.dir == Args#ipt_args.dir orelse Rule#netflow_rule.dir == any) andalso
     ip:in_range(Args#ipt_args.src_ip, Rule#netflow_rule.src_net) andalso
     ip:in_range(Args#ipt_args.dst_ip, Rule#netflow_rule.dst_net) andalso
     (Rule#netflow_rule.src_port == Args#ipt_args.src_port orelse Rule#netflow_rule.src_port == any) andalso
@@ -107,14 +105,11 @@ read_plan([{Name, ClassLinks} | Tail]) ->
 read_class([], _, _) ->
     ok;
 read_class([{Name, PeriodName, Rules} | Tail], Idx, Periods) ->
-    read_class([{Name, PeriodName, any, Rules} | Tail], Idx, Periods);
-read_class([{Name, PeriodName, Direction, Rules} | Tail], Idx, Periods) ->
     Period = proplists:get_value(PeriodName, Periods, any),
-    Fun = fun(Rule) -> write_rule(Name, Period, Direction, Rule, Idx) end,
-    lists:foreach(Fun, Rules),
+    write_rule(Name, Period, Rules, Idx),
     read_class(Tail, Idx + 1, Periods).
 
-write_rule(Class, Period, Direction, Rule, Idx) ->
+write_rule(Class, Period, Rule, Idx) ->
     SrcRule = proplists:get_value(src, Rule),
     DstRule = proplists:get_value(dst, Rule),
     Proto = proplists:get_value(proto, Rule, any),
@@ -122,7 +117,6 @@ write_rule(Class, Period, Direction, Rule, Idx) ->
         idx = Idx,
         class = Class,
         time = Period,
-        dir = Direction,
         src_net = proplists:get_value(net, SrcRule),
         src_port = proplists:get_value(port, SrcRule, any),
         dst_net = proplists:get_value(net, DstRule),

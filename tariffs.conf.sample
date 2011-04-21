@@ -2,8 +2,8 @@
 %%% Netspire mod_iptraffic sample tariffs
 %%%
 
-{plans,
-    [{"Ultimate", [
+{plans, [
+    {"Ultimate", [
         {"Incoming HTTP Day", 1},
         {"Incoming HTTP Night", 1},
         {"Incoming Day", 1},
@@ -12,9 +12,9 @@
         {"Outgoing", 0},
         {"Local In", 0},
         {"Local Out", 0}
-     ]},
+    ]},
 
-     {"Daylight", [
+    {"Daylight", [
         {"Incoming HTTP Day", 0.5},
         {"Incoming HTTP Night", 1.7},
         {"Incoming Day", 0.5},
@@ -22,50 +22,57 @@
         {"Outgoing", 0},
         {"Local In", 0},
         {"Local Out", 0}
-     ]}]}.
+    ]}
+]}.
 
 %% First matching rule wins
-{classes,
-    [{"Local In", "All Day", in, [
-        [{src, [{net, "10.10.0.0/255.255.255.0"}]},
-         {dst, [{net, "10.10.0.0/255.255.255.0"}]}]]},
+{classes, [
+    {"Local In", "All Day", [
+        {src, [{net, "10.10.0.0/255.255.255.0"}]},
+        {dst, [{net, "10.10.0.0/255.255.255.0"}]}
+    ]},
 
-     {"Local Out", "All Day", out, [
-         [{src, [{net, "10.10.0.0/24"}]},
-          {dst, [{net, "10.10.0.0/24"}]}]]},
+    {"Local Out", "All Day", [
+        {src, [{net, "10.10.0.0/24"}]},
+        {dst, [{net, "10.10.0.0/24"}]}
+    ]},
 
-     {"Incoming HTTP Day", "Day", [
-         [{src, [{net, "0.0.0.0/0"}, {port, 80}]},
-          {dst, [{net, "10.10.0.0/24"}]},
-          {proto, tcp}
-         ]]},
+    {"Incoming HTTP Day", "Day", [
+        {src, [{net, "0.0.0.0/0"}, {port, 80}]},
+        {dst, [{net, "10.10.0.0/24"}]},
+        {proto, tcp}
+    ]},
 
-     {"Incoming HTTP Night", "Night", [
-         [{src, [{net, "0.0.0.0/0"}, {port, 80}]},
-          {dst, [{net, "10.10.0.0/16"}]},
-          {proto, tcp}
-         ]]},
+    {"Incoming HTTP Night", "Night", [
+        {src, [{net, "0.0.0.0/0"}, {port, 80}]},
+        {dst, [{net, "10.10.0.0/16"}]},
+        {proto, tcp}
+    ]},
 
-     {"Incoming Day", "Day", [
-         [{src, [{net, "0.0.0.0/0"}]},
-          {dst, [{net, "10.10.0.0/16"}]}]]},
+    {"Incoming Day", "Day", [
+        {src, [{net, "0.0.0.0/0"}]},
+        {dst, [{net, "10.10.0.0/16"}]}
+    ]},
 
-     {"Incoming Night", "Night", [
-         [{src, [{net, "0.0.0.0/0"}]},
-          {dst, [{net, "10.10.0.0/255.255.0.0"}]}]]},
+    {"Incoming Night", "Night", [
+        {src, [{net, "0.0.0.0/0"}]},
+        {dst, [{net, "10.10.0.0/255.255.0.0"}]}
+    ]},
 
-     {"Outgoing Day", "Day", [
-         [{src, [{net, "10.10.0.0/16"}]},
-          {dst, [{net, "0.0.0.0/0"}]}]]},
+    {"Outgoing Day", "Day", [
+        {src, [{net, "10.10.0.0/16"}]},
+        {dst, [{net, "0.0.0.0/0"}]}
+    ]},
 
-     {"Outgoing", "All Day", [
-         [{src, [{net, "10.10.0.0/16"}]},
-          {dst, [{net, "0.0.0.0/0"}]}]]}
-    ]}.
+    {"Outgoing", "All Day", [
+        {src, [{net, "10.10.0.0/16"}]},
+        {dst, [{net, "0.0.0.0/0"}]}
+    ]}
+]}.
 
-{periods,
-    [{"All Day", "00:00:00-23:59:59"},
-     {"Weekends", [6, 7], "00:00:00-23:59:59"},
-     {"Night", "22:00:00-08:00:00"},
-     {"Day", "08:00:00-21:59:59"}
-    ]}.
+{periods, [
+    {"All Day", "00:00:00-23:59:59"},
+    {"Weekends", [6, 7], "00:00:00-23:59:59"},
+    {"Night", "22:00:00-08:00:00"},
+    {"Day", "08:00:00-21:59:59"}
+]}.
