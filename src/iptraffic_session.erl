@@ -157,13 +157,9 @@ handle_call(_Request, _From, State) ->
 
 handle_cast({netflow, Direction, {H, Rec}}, State) ->
     {ok, Args} = build_iptraffic_args(H, Rec, Direction),
-    case do_accounting(State, Args) of
-        {ok, NewState} ->
-            mnesia:dirty_write(NewState),
-            {noreply, NewState};
-        _Error ->
-            {noreply, State}
-    end;
+    {ok, NewState} = do_accounting(State, Args),
+    mnesia:dirty_write(NewState),
+    {noreply, NewState};
 handle_cast(_Request, State) ->
     {noreply, State}.
 
@@ -274,6 +270,7 @@ build_iptraffic_args(H, Rec, Direction) when is_record(H, nfh_v5) ->
     },
     {ok, Args}.
 
+%% FIXME: need rewrite more compactly
 do_accounting(Session, Args) ->
     Data = Session#ipt_session.data,
     Plan = Data#ipt_data.plan,
@@ -295,9 +292,10 @@ do_accounting(Session, Args) ->
             netspire_hooks:run(matched_session, [Session, Args, MatchResult, 0]),
             {ok, NewState};
         {error, Reason} ->
+            NewState = update_session_state(Session, Args, 0),
             ?ERROR_MSG("Cannot process accounting for session ~s due to ~p~n",
                 [Session#ipt_session.sid, Reason]),
-            {error, Reason}
+            {ok, NewState}
     end.
 
 disconnect_client(Session) ->
