@@ -54,8 +54,8 @@ match_rule(any, _) ->
     true;
 match_rule(Rule, Args) ->
     match_time(Rule#netflow_rule.time, Args#ipt_args.sec) andalso
-    ip:in_range(Args#ipt_args.src_ip, Rule#netflow_rule.src_net) andalso
-    ip:in_range(Args#ipt_args.dst_ip, Rule#netflow_rule.dst_net) andalso
+    iplib:in_range(Args#ipt_args.src_ip, Rule#netflow_rule.src_net) andalso
+    iplib:in_range(Args#ipt_args.dst_ip, Rule#netflow_rule.dst_net) andalso
     (Rule#netflow_rule.src_port == Args#ipt_args.src_port orelse Rule#netflow_rule.src_port == any) andalso
     (Rule#netflow_rule.src_port == Args#ipt_args.dst_port orelse Rule#netflow_rule.dst_port == any) andalso
     (Rule#netflow_rule.proto == Args#ipt_args.proto orelse Rule#netflow_rule.proto == any).
