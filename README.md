@@ -5,20 +5,23 @@ Features:
 
 * RADIUS authentication
 * Realtime traffic calculation using [Netflow](http://en.wikipedia.org/wiki/Netflow) v5 as a traffic source
-* Flexible tariffs (subnet rules, time rules)
-* Using PostgreSQL database for the storing users, tariff plans, RADIUS attributes and sessions
-* It's easy to add your own backends
+* Flexible tariffs (subnet rules, time/date rules)
 
 Configuration
 -------------
 
 The following modules should be added to the netspire.conf file:
 
-    {mod_iptraffic, [{tariffs, "tariffs.conf"}, {session_timeout, 60}, {delay_stop, 5}, {disconnect_on_shutdown, yes}]}
+    {mod_iptraffic, [
+        {tariffs, "tariffs.conf"},
+        {session_timeout, 60},
+        {delay_stop, 5},
+        {disconnect_on_shutdown, yes}
+    ]}
 
 The default value of the **session_timeout** option is 60 seconds and may be ommited.
 
-The ***delay_stop*** option is used to delay stopping of the session to receive all data from netflow sensor after the session closing (After receiving Accounting-Stop packet).
+The ***delay_stop*** option is used to delay stopping of the session to receive all data from netflow sensor after the session closing (after receiving Accounting-Stop packet).
 The default value of the ***delay_stop*** option is 5 seconds and and may be ommited.
 
 The ***disconnect_on_shutdown*** option is used to specify is need to disconnect clients from NAS in case of application shutdown.
