@@ -14,13 +14,12 @@
 -export([start/1, stop/0]).
 
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2,
+         terminate/2, code_change/3]).
 
 -include("netspire.hrl").
--include("radius/radius.hrl").
--include("netflow/netflow_v5.hrl").
--include("netflow/netflow_v9.hrl").
 -include("iptraffic.hrl").
+-include("radius/radius.hrl").
 
 start(Options) ->
     ?INFO_MSG("Starting dynamic module ~p~n", [?MODULE]),
