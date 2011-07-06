@@ -67,7 +67,7 @@ match_time({[], 0, 0}, _Time) ->
 match_time({Days, Start, End}, Time) when End >= Start ->
     Time >= Start andalso Time =< End andalso is_today(Days);
 match_time({Days, Start, End}, Time) when End < Start ->
-    Time >= Start orelse Time =< End orelse is_today(Days).
+    Time >= Start orelse Time =< End andalso is_today(Days).
 
 is_today(Days) when Days =:= [] -> true;
 is_today(Days) ->
