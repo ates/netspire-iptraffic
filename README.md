@@ -4,6 +4,7 @@ The IPTraffic module for serving VPN customers
 Features:
 
 * RADIUS authentication
+* RADIUS accounting
 * Realtime traffic calculation using [Netflow](http://en.wikipedia.org/wiki/Netflow) v5 as a traffic source
 * Flexible tariffs (subnet rules, time/date rules)
 
