@@ -189,7 +189,11 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 terminate(_Reason, State) ->
-    netspire_netflow:delete_packet_handler(iptraffic_session),
+    case State#state.accounting_mode of
+        netflow ->
+            netspire_netflow:delete_packet_handler(iptraffic_session);
+        _ -> ok
+    end,
     gen_module:stop_module(State#state.backend),
     netspire_hooks:delete_all(?MODULE).
 
