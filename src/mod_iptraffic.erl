@@ -21,7 +21,7 @@
 -include("iptraffic.hrl").
 -include("radius/radius.hrl").
 
--record(state, {accounting_mode = netflow}).
+-record(state, {accounting_mode = netflow, backend}).
 
 start(Options) ->
     ?INFO_MSG("Starting dynamic module ~p~n", [?MODULE]),
@@ -54,14 +54,14 @@ init([Options]) ->
     end,
     case application:get_env(netspire, database_backend) of
         {ok, Name} ->
-            Module = lists:concat([?MODULE, "_", Name]),
-            gen_module:start_module(list_to_atom(Module), []),
+            Module = list_to_atom(lists:concat([?MODULE, "_", Name])),
+            gen_module:start_module(Module, []),
             netspire_hooks:add(radius_access_request, ?MODULE, access_request),
             netspire_hooks:add(radius_access_accept, ?MODULE, init_session),
             netspire_hooks:add(radius_acct_request, ?MODULE, accounting_request),
             Timeout = proplists:get_value(session_timeout, Options, 60) * 1000,
             timer:send_interval(Timeout, expire_all),
-            {ok, #state{accounting_mode = AccountingMode}};
+            {ok, #state{accounting_mode = AccountingMode, backend = Module}};
         undefined ->
             ?ERROR_MSG("Cannot determine database backend~n", []),
             {stop, error}
@@ -188,8 +188,9 @@ handle_info(_Request, State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-terminate(_Reason, _State) ->
+terminate(_Reason, State) ->
     netspire_netflow:delete_packet_handler(iptraffic_session),
+    gen_module:stop_module(State#state.backend),
     netspire_hooks:delete_all(?MODULE).
 
 traverse_all(Guard, Fun) ->

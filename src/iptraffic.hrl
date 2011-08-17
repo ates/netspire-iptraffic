@@ -12,7 +12,7 @@
         pid,
         node,
         nas_spec,
-        disc_req_sent,
+        disc_req_sent, % disconnect request sent
         data
     }).
 
