@@ -10,37 +10,23 @@ DROP TABLE IF EXISTS assigned_radius_replies;
 DROP TABLE IF EXISTS radius_replies;
 DROP TABLE IF EXISTS accounts;
 DROP TABLE IF EXISTS plans;
-DROP TABLE IF EXISTS users;
 
 DROP SEQUENCE IF EXISTS iptraffic_sessions_id_seq CASCADE;
 DROP SEQUENCE IF EXISTS assigned_radius_replies_id_seq CASCADE;
 DROP SEQUENCE IF EXISTS radius_replies_id_seq CASCADE;
 DROP SEQUENCE IF EXISTS accounts_id_seq CASCADE;
 DROP SEQUENCE IF EXISTS plans_id_seq CASCADE;
-DROP SEQUENCE IF EXISTS users_id_seq CASCADE;
 
 DROP LANGUAGE IF EXISTS plpgsql;
 
 -- Create schema objects
 CREATE LANGUAGE plpgsql;
 
-CREATE SEQUENCE users_id_seq;
 CREATE SEQUENCE accounts_id_seq;
 CREATE SEQUENCE plans_id_seq;
 CREATE SEQUENCE radius_replies_id_seq;
 CREATE SEQUENCE assigned_radius_replies_id_seq;
 CREATE SEQUENCE iptraffic_sessions_id_seq;
-
-CREATE TABLE users(
-    id INTEGER NOT NULL DEFAULT NEXTVAL('users_id_seq') PRIMARY KEY,
-    login VARCHAR(128) NOT NULL,
-    password VARCHAR(128) NOT NULL,
-    email VARCHAR(128),
-    balance NUMERIC(20,10) DEFAULT 0.0,
-    active BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP WITHOUT TIME ZONE,
-    updated_at TIMESTAMP WITHOUT TIME ZONE
-);
 
 CREATE TABLE plans(
     id INTEGER NOT NULL DEFAULT NEXTVAL('plans_id_seq') PRIMARY KEY,
@@ -53,7 +39,6 @@ CREATE TABLE plans(
 
 CREATE TABLE accounts(
     id INTEGER NOT NULL DEFAULT NEXTVAL('accounts_id_seq') PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id),
     plan_id INTEGER NOT NULL REFERENCES plans(id),
     login VARCHAR(128) NOT NULL,
     password VARCHAR(128) NOT NULL,
@@ -154,13 +139,11 @@ $$ LANGUAGE plpgsql;
 
 -- Fill up schema for testing purpose
 
-INSERT INTO users(login, password, email, balance, active) VALUES('joel', 'secret', 'joel@example.com', 100, TRUE);
-
 INSERT INTO plans(name, code) VALUES('Standard traffic plan', 'Standard');
 INSERT INTO plans(name, code) VALUES('Unlimited 512 Kbit', 'Unlimited 512');
 INSERT INTO plans(name, code) VALUES('Unlimited 1024 kbit ', 'Unlimited 1024');
 
-INSERT INTO accounts(user_id, plan_id, login, password, balance, active) VALUES(1, 1, 'joel', 'secret', 100, TRUE);
+INSERT INTO accounts(plan_id, login, password, balance, active) VALUES(1, 'joel', 'secret', 100, TRUE);
 
 INSERT INTO radius_replies(name, description) VALUES('Acct-Interim-Interval', 'This attribute indicates the number of seconds between each interim update in seconds for this specific session');
 INSERT INTO radius_replies(name, description) VALUES('Framed-IP-Address', 'This attribute indicates the address to be configured for the user');
