@@ -121,10 +121,6 @@ prepare_session(Pid, UserName, Extra, Response, Client) ->
             {reject, []}
     end.
 
-%%
-%% OctetsIn = radius:attribute_value("Acct-Input-Gigawords", Request),
-%% OctetsOut = radius:attribute_value("Acct-Output-Gigawords", Request),
-%%
 handle_call({accounting_request, _Response, ?ACCT_START, Request, _Client}, _From, State) ->
     UserName = radius:attribute_value("User-Name", Request),
     IP = radius:attribute_value("Framed-IP-Address", Request),
