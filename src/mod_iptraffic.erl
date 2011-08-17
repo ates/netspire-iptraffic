@@ -21,6 +21,8 @@
 -include("iptraffic.hrl").
 -include("radius/radius.hrl").
 
+-record(state, {accounting_mode = netflow}).
+
 start(Options) ->
     ?INFO_MSG("Starting dynamic module ~p~n", [?MODULE]),
     iptraffic_sup:start(Options).
@@ -32,27 +34,37 @@ stop() ->
     ?INFO_MSG("Stopping dynamic module ~p~n", [?MODULE]),
     iptraffic_sup:stop().
 
+accounting_request(Response, Type, Request, Client) ->
+    gen_server:call(?MODULE, {accounting_request, Response, Type, Request, Client}).
+
 init([Options]) ->
     process_flag(trap_exit, true),
-    Plans = proplists:get_value(tariffs, Options, []),
-    case iptraffic_tariffs:init(Plans) of
-        ok ->
-            case application:get_env(netspire, database_backend) of
-                {ok, Name} ->
-                    Module = lists:concat([?MODULE, "_", Name]),
-                    gen_module:start_module(list_to_atom(Module), []),
-                    netspire_netflow:add_packet_handler(iptraffic_session, []),
-                    netspire_hooks:add(radius_access_request, ?MODULE, access_request),
-                    netspire_hooks:add(radius_access_accept, ?MODULE, init_session),
-                    netspire_hooks:add(radius_acct_request, ?MODULE, accounting_request),
-                    Timeout = proplists:get_value(session_timeout, Options, 60) * 1000,
-                    timer:send_interval(Timeout, expire_all),
-                    {ok, no_state};
-                undefined ->
-                    ?ERROR_MSG("Cannot determine database backend~n", []),
-                    {stop, error}
+    AccountingMode = proplists:get_value(accounting_mode, Options, netflow),
+    case AccountingMode of
+        netflow ->
+            Plans = proplists:get_value(tariffs, Options),
+            case iptraffic_tariffs:init(Plans) of
+                ok ->
+                    ?INFO_MSG("Selected netflow as traffic source~n", []),
+                    netspire_netflow:add_packet_handler(iptraffic_session, []);
+                _ -> ok
             end;
-        Error -> {stop, Error}
+        radius ->
+            ?INFO_MSG("Selected RADIUS as traffic source~n", [])
+    end,
+    case application:get_env(netspire, database_backend) of
+        {ok, Name} ->
+            Module = lists:concat([?MODULE, "_", Name]),
+            gen_module:start_module(list_to_atom(Module), []),
+            netspire_hooks:add(radius_access_request, ?MODULE, access_request),
+            netspire_hooks:add(radius_access_accept, ?MODULE, init_session),
+            netspire_hooks:add(radius_acct_request, ?MODULE, accounting_request),
+            Timeout = proplists:get_value(session_timeout, Options, 60) * 1000,
+            timer:send_interval(Timeout, expire_all),
+            {ok, #state{accounting_mode = AccountingMode}};
+        undefined ->
+            ?ERROR_MSG("Cannot determine database backend~n", []),
+            {stop, error}
     end.
 
 access_request(_Value, Request, Client) ->
@@ -109,38 +121,55 @@ prepare_session(Pid, UserName, Extra, Response, Client) ->
             {reject, []}
     end.
 
-accounting_request(_Response, ?ACCT_START, Request, _Client) ->
+%%
+%% OctetsIn = radius:attribute_value("Acct-Input-Gigawords", Request),
+%% OctetsOut = radius:attribute_value("Acct-Output-Gigawords", Request),
+%%
+handle_call({accounting_request, _Response, ?ACCT_START, Request, _Client}, _From, State) ->
     UserName = radius:attribute_value("User-Name", Request),
     IP = radius:attribute_value("Framed-IP-Address", Request),
     SID = radius:attribute_value("Acct-Session-Id", Request),
     case iptraffic_session:start(UserName, IP, SID) of
         ok ->
-            #radius_packet{code = ?ACCT_RESPONSE};
-        _Error ->
-            noreply
+            {reply, #radius_packet{code = ?ACCT_RESPONSE}, State};
+        _ ->
+            {reply, noreply, State}
     end;
-accounting_request(_Response, ?INTERIM_UPDATE, Request, _Client) ->
+handle_call({accounting_request, _Response, ?INTERIM_UPDATE, Request, _Client}, _From, State) ->
     SID = radius:attribute_value("Acct-Session-Id", Request),
+    case State#state.accounting_mode of
+        radius ->
+            OctetsIn = radius:attribute_value("Acct-Input-Gigawords", Request),
+            OctetsOut = radius:attribute_value("Acct-Output-Gigawords", Request),
+            iptraffic_session:update_octets_counters(SID, OctetsIn, OctetsOut);
+        _ -> ok
+    end,
     case iptraffic_session:interim(SID) of
         ok ->
             netspire_hooks:run(ippool_renew_ip, [Request]),
-            #radius_packet{code = ?ACCT_RESPONSE};
-        _Error ->
-            noreply
+            {reply, #radius_packet{code = ?ACCT_RESPONSE}, State};
+        _ ->
+            {reply, noreply, State}
     end;
-accounting_request(_Response, ?ACCT_STOP, Request, _Client) ->
+handle_call({accounting_request, _Response, ?ACCT_STOP, Request, _Client}, _From, State) ->
     SID = radius:attribute_value("Acct-Session-Id", Request),
+    case State#state.accounting_mode of
+        radius ->
+            OctetsIn = radius:attribute_value("Acct-Input-Gigawords", Request),
+            OctetsOut = radius:attribute_value("Acct-Output-Gigawords", Request),
+            iptraffic_session:update_octets_counters(SID, OctetsIn, OctetsOut);
+        _ -> ok
+    end,
     case iptraffic_session:stop(SID) of
-        {ok, State} ->
+        {ok, Session} ->
             Timeout = gen_module:get_option(?MODULE, delay_stop, 5),
-            timer:apply_after(Timeout * 1000, iptraffic_sup, delete_session, [State, Request]),
-            #radius_packet{code = ?ACCT_RESPONSE};
-        _Error ->
-            noreply
+            timer:apply_after(Timeout * 1000, iptraffic_sup, delete_session, [Session, Request]),
+            {reply, #radius_packet{code = ?ACCT_RESPONSE}, State};
+        _ ->
+            {reply, noreply, State}
     end;
-accounting_request(_Response, _, _, _) ->
-    noreply.
-
+handle_call({accounting_request, _Response, _, _, _}, _From, State) ->
+    {reply, noreply, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.

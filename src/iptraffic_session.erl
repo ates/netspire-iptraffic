@@ -3,15 +3,17 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, prepare/4, start/3, interim/1, stop/1, expire/1, handle_packet/2, list/0, list/1]).
+-export([start_link/1, prepare/4, start/3, interim/1,
+         stop/1, expire/1, handle_packet/2, list/0, list/1,
+         update_octets_counters/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -include("netspire.hrl").
+-include("iptraffic.hrl").
 -include("netflow/netflow_v5.hrl").
 -include("netflow/netflow_v9.hrl").
--include("iptraffic.hrl").
 -include_lib("stdlib/include/qlc.hrl").
 
 start_link(UUID) ->
@@ -32,6 +34,16 @@ interim(SID) ->
     case fetch(SID) of
         {ok, State} ->
             gen_server:call(State#ipt_session.pid, interim);
+        Error ->
+            Error
+    end.
+
+update_octets_counters(Pid, In, Out) when is_pid(Pid) ->
+    gen_server:call(Pid, {update_octets_counters, In, Out});
+update_octets_counters(SID, In, Out) ->
+    case fetch(SID) of
+        {ok, State} ->
+            update_octets_counters(State#ipt_session.pid, In, Out);
         Error ->
             Error
     end.
@@ -133,6 +145,13 @@ handle_call(interim, _From, State) ->
         Aborted ->
             {reply, {error, Aborted}, State}
     end;
+handle_call({update_octets_counters, In, Out}, _From, State) ->
+    Data = State#ipt_session.data,
+    NewData = Data#ipt_data{
+        octets_in = Data#ipt_data.octets_in + In,
+        octets_out = Data#ipt_data.octets_out + Out
+    },
+    {reply, ok, State#ipt_session{data = NewData}};
 handle_call(stop, _From, State) ->
     case stop_session(State, false) of
         {ok, NewState} ->
