@@ -133,7 +133,7 @@ accounting_request(_Response, ?ACCT_STOP, Request, _Client) ->
     case iptraffic_session:stop(SID) of
         {ok, State} ->
             Timeout = gen_module:get_option(?MODULE, delay_stop, 5),
-            {ok, _} = timer:apply_after(Timeout * 1000, iptraffic_sup, delete_session, [State, Request]),
+            timer:apply_after(Timeout * 1000, iptraffic_sup, delete_session, [State, Request]),
             #radius_packet{code = ?ACCT_RESPONSE};
         _Error ->
             noreply

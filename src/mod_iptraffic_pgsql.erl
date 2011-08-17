@@ -9,6 +9,8 @@
 
 -include("netspire.hrl").
 
+-define(NOW2UTC(Date), calendar:now_to_universal_time(Date)).
+
 start(_Options) ->
     ?INFO_MSG("Starting dynamic module ~p~n", [?MODULE]),
     netspire_hooks:add(iptraffic_fetch_account, ?MODULE, fetch_account),
@@ -27,7 +29,7 @@ fetch_account(_, UserName) ->
 
 start_session(_, UserName, IP, SID, StartedAt) ->
     Q = "SELECT * FROM iptraffic_start_session($1, $2, $3, $4)",
-    case execute(Q, [UserName, inet_parse:ntoa(IP), SID, calendar:now_to_universal_time(StartedAt)]) of
+    case execute(Q, [UserName, inet_parse:ntoa(IP), SID, ?NOW2UTC(StartedAt)]) of
         {ok, _, _} ->
             {stop, ok};
         {error, Reason} ->
@@ -36,7 +38,7 @@ start_session(_, UserName, IP, SID, StartedAt) ->
 
 sync_session(_, UserName, SID, UpdatedAt, In, Out, Amount) ->
     Q = "SELECT * FROM iptraffic_sync_session($1, $2, $3, $4, $5, $6)",
-    case execute(Q, [UserName, SID, calendar:now_to_universal_time(UpdatedAt), In, Out, Amount]) of
+    case execute(Q, [UserName, SID, ?NOW2UTC(UpdatedAt), In, Out, Amount]) of
         {ok, _, _} ->
             {stop, ok};
         {error, Reason} ->
@@ -45,7 +47,7 @@ sync_session(_, UserName, SID, UpdatedAt, In, Out, Amount) ->
 
 stop_session(_, UserName, SID, FinishedAt, In, Out, Amount, Expired) ->
     Q = "SELECT * FROM iptraffic_stop_session($1, $2, $3, $4, $5, $6, $7)",
-    case execute(Q, [UserName, SID, calendar:now_to_universal_time(FinishedAt), In, Out, Amount, Expired]) of
+    case execute(Q, [UserName, SID, ?NOW2UTC(FinishedAt), In, Out, Amount, Expired]) of
         {ok, _, _} ->
             {stop, ok};
         {error, Reason} ->
