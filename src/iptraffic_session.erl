@@ -293,8 +293,8 @@ build_iptraffic_args(H, Rec, Direction) when is_record(H, nfh_v5) ->
 do_accounting(Session, Args) ->
     Data = Session#ipt_session.data,
     Plan = Data#ipt_data.plan,
-    case iptraffic_tariffs:match(Plan, Session, Args) of
-        {ok, {Plan, _Rule, Cost} = MatchResult} when Cost > 0 ->
+    case iptraffic_tariffs:match(Plan, Args) of
+        {ok, {Plan, Cost} = MatchResult} when Cost > 0 ->
             Amount = Args#ipt_args.octets / 1024 / 1024 * Cost,
             NewBalance = Data#ipt_data.balance - (Data#ipt_data.amount + Amount),
             NewSession = if

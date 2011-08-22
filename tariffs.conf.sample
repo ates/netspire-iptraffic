@@ -3,76 +3,63 @@
 %%%
 
 {plans, [
-    {"Ultimate", [
-        {"Incoming HTTP Day", 1},
-        {"Incoming HTTP Night", 1},
-        {"Incoming Day", 1},
-        {"Incoming Night", 1},
-        {"Outgoing Day", 5},
-        {"Outgoing", 0},
-        {"Local In", 0},
-        {"Local Out", 0}
+    %% First matched class will be used
+    {"Plan1", [
+        {"Local traffic", "All Day", 0},
+        {"Internet incomming", "Weekend", 0.01},
+        {"Internet outgoing", "Weekend", 0.01},
+        {"Internet incomming", "All Day", 0.05},
+        {"Internet outgoing", "All Day", 0.05}
     ]},
 
-    {"Daylight", [
-        {"Incoming HTTP Day", 0.5},
-        {"Incoming HTTP Night", 1.7},
-        {"Incoming Day", 0.5},
-        {"Incoming Night", 2},
-        {"Outgoing", 0},
-        {"Local In", 0},
-        {"Local Out", 0}
+    {"Plan2", [
+        {"Local traffic", "Night", 0},
+        {"Local traffic", "Day", 0.01},
+        {"Internet web incomming", "Weekdays", 0.05},
+        {"Internet web outgoing", "Weekdays", 0.05},
+        {"Internet incomming", "All Day", 0.20},
+        {"Internet outgoing", "All Day", 0.20}
     ]}
 ]}.
 
-%% First matching rule wins
 {classes, [
-    {"Local In", "All Day", [
-        {src, [{net, "10.10.0.0/255.255.255.0"}]},
-        {dst, [{net, "10.10.0.0/255.255.255.0"}]}
+    {"Local traffic", [
+        {src, [{net, "Local network"}]},
+        {dst, [{net, "Local network"}]}
     ]},
 
-    {"Local Out", "All Day", [
-        {src, [{net, "10.10.0.0/24"}]},
-        {dst, [{net, "10.10.0.0/24"}]}
+    {"Internet incomming", [
+        {src, [{net, "Internet"}]},
+        {dst, [{net, "Local network"}]}
     ]},
 
-    {"Incoming HTTP Day", "Day", [
-        {src, [{net, "0.0.0.0/0"}, {port, 80}]},
-        {dst, [{net, "10.10.0.0/24"}]},
+    {"Internet outgoing", [
+        {src, [{net, "Local network"}]},
+        {dst, [{net, "Internet"}]}
+    ]},
+
+    {"Internet web incomming", [
+        {src, [{net, "Internet"}, {port, 80}]},
+        {dst, [{net, "Local network"}]},
         {proto, tcp}
     ]},
 
-    {"Incoming HTTP Night", "Night", [
-        {src, [{net, "0.0.0.0/0"}, {port, 80}]},
-        {dst, [{net, "10.10.0.0/16"}]},
+    {"Internet web outgoing", [
+        {src, [{net, "Local network"}, {port, 80}]},
+        {dst, [{net, "Internet"}]},
         {proto, tcp}
-    ]},
-
-    {"Incoming Day", "Day", [
-        {src, [{net, "0.0.0.0/0"}]},
-        {dst, [{net, "10.10.0.0/16"}]}
-    ]},
-
-    {"Incoming Night", "Night", [
-        {src, [{net, "0.0.0.0/0"}]},
-        {dst, [{net, "10.10.0.0/255.255.0.0"}]}
-    ]},
-
-    {"Outgoing Day", "Day", [
-        {src, [{net, "10.10.0.0/16"}]},
-        {dst, [{net, "0.0.0.0/0"}]}
-    ]},
-
-    {"Outgoing", "All Day", [
-        {src, [{net, "10.10.0.0/16"}]},
-        {dst, [{net, "0.0.0.0/0"}]}
     ]}
+]}.
+
+{networks, [
+    {"Local network", list, ["10.10.0.0/24", "192.168.1.0/24"]},
+    {"Internet", list, ["0.0.0.0/0"]}
 ]}.
 
 {periods, [
     {"All Day", "00:00:00-23:59:59"},
-    {"Weekends", [6, 7], "00:00:00-23:59:59"},
+    {"Weekend", [6, 7], "00:00:00-23:59:59"},
+    {"Weekdays", [1, 2, 3, 4, 5], "00:00:00-23:59:59"},
     {"Night", "22:00:00-08:00:00"},
     {"Day", "08:00:00-21:59:59"}
 ]}.
