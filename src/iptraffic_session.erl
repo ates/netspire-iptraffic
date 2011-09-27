@@ -197,7 +197,7 @@ terminate(shutdown, State) ->
         _ -> ok
     end,
     stop_session(State, false),
-    ?INFO_MSG("Session ~s shutted down successfully~n", [to_string(State)]);
+    ?INFO_MSG("Session ~s shutdown successfully~n", [to_string(State)]);
 terminate(Reason, State) ->
     ?ERROR_MSG("Session ~s abnormally terminated due to ~p~n", [to_string(State), Reason]).
 
