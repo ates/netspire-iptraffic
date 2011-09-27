@@ -90,7 +90,7 @@ access_request(_Value, Request, Client) ->
                                     {stop, undefined}
                             end
                     end;
-                undefined ->
+                _ ->
                     {stop, undefined}
             end
     end.

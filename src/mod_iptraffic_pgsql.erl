@@ -23,9 +23,19 @@ stop() ->
     netspire_hooks:delete_all(?MODULE).
 
 fetch_account(_, UserName) ->
-    DbResult = execute("SELECT * FROM auth($1)", [UserName]),
-    Result = process_fetch_account_result(DbResult),
-    {stop, Result}.
+    try
+        {ok, _, [{ServiceLinkID, Password, Balance}]} = execute(
+            "SELECT service_link_id, password, balance::FLOAT FROM iptraffic_access_links WHERE login = $1 AND balance > 0 LIMIT 1", [UserName]),
+        {ok, _, [{AssignedServiceID}]} = execute(
+            "SELECT assigned_service_id FROM service_links WHERE id = $1 AND active = TRUE LIMIT 1", [ServiceLinkID]),
+        {ok, _, [{PlanID}]} = execute(
+            "SELECT plan_id FROM assigned_services WHERE id = $1 LIMIT 1", [AssignedServiceID]),
+        {ok, _, [{Code}]} = execute("SELECT code FROM plans WHERE id = $1 AND active = TRUE LIMIT 1", [PlanID]),
+        {stop, {ok, {binary_to_list(Password), [], {Balance, binary_to_list(Code)}}}}
+    catch
+        _:Reason ->
+            {stop, {error, Reason}}
+    end.
 
 start_session(_, UserName, IP, SID, StartedAt) ->
     Q = "SELECT * FROM iptraffic_start_session($1, $2, $3, $4)",
@@ -33,6 +43,7 @@ start_session(_, UserName, IP, SID, StartedAt) ->
         {ok, _, _} ->
             {stop, ok};
         {error, Reason} ->
+            ?ERROR_MSG("Cannot start session ~s due to ~p~n", [SID, Reason]),
             {stop, {error, Reason}}
     end.
 
@@ -42,6 +53,7 @@ sync_session(_, UserName, SID, UpdatedAt, In, Out, Amount) ->
         {ok, _, _} ->
             {stop, ok};
         {error, Reason} ->
+            ?ERROR_MSG("Cannot update session ~s due to ~p~n", [SID, Reason]),
             {stop, {error, Reason}}
     end.
 
@@ -51,27 +63,12 @@ stop_session(_, UserName, SID, FinishedAt, In, Out, Amount, Expired) ->
         {ok, _, _} ->
             {stop, ok};
         {error, Reason} ->
+            ?ERROR_MSG("Cannot update session ~s due to ~p~n", [SID, Reason]),
             {stop, {error, Reason}}
     end.
 
+%%
+%% Internal functions
+%%
 execute(Q, Params) ->
     mod_postgresql:execute(Q, Params).
-
-process_fetch_account_result(Result) ->
-    F = fun({_, _, _, null, null}) ->
-                undefined;
-            ({_, _, _, Name, Value}) ->
-                {binary_to_list(Name), binary_to_list(Value)}
-    end,
-    case Result of
-        {ok, _Columns, Rows} ->
-            case Rows of
-                [] ->
-                    undefined;
-                Res ->
-                    {Password, Balance, Plan, _, _} = lists:nth(1, Res),
-                    Attrs = [E || E <- [F(X) || X <- Res], E =/= undefined],
-                    {ok, {binary_to_list(Password), Attrs, {Balance, binary_to_list(Plan)}}}
-            end;
-        _ -> undefined
-    end.
