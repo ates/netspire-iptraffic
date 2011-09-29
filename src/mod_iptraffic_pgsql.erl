@@ -24,16 +24,23 @@ stop() ->
 
 fetch_account(_, UserName) ->
     try
-        {ok, _, [{ServiceLinkID, Password, Balance}]} = execute(
-            "SELECT service_link_id, password, balance::FLOAT FROM iptraffic_access_links WHERE login = $1 AND balance > 0 LIMIT 1", [UserName]),
+        {ok, _, [{ID, ServiceLinkID, Password, Balance}]} = execute(
+            "SELECT id, service_link_id, password, balance::FLOAT FROM iptraffic_access_links WHERE login = $1 AND balance > 0 LIMIT 1", [UserName]),
         {ok, _, [{AssignedServiceID}]} = execute(
             "SELECT assigned_service_id FROM service_links WHERE id = $1 AND active = TRUE LIMIT 1", [ServiceLinkID]),
         {ok, _, [{PlanID}]} = execute(
             "SELECT plan_id FROM assigned_services WHERE id = $1 LIMIT 1", [AssignedServiceID]),
         {ok, _, [{Code}]} = execute("SELECT code FROM plans WHERE id = $1 AND active = TRUE LIMIT 1", [PlanID]),
-        {stop, {ok, {binary_to_list(Password), [], {Balance, binary_to_list(Code)}}}}
+        % looking for the Account's RADIUS attributes
+        {ok, _, Attrs} = execute("SELECT t0.name, t1.value FROM assigned_radius_attributes t1
+                                           LEFT OUTER JOIN radius_attributes t0 ON
+                                           t0.id = t1.radius_attribute_id
+                                           WHERE t1.target_id = $1 AND t1.target_type = 'Account' AND t0.active = TRUE", [ID]),
+        Attrs1 = [{binary_to_list(Name), binary_to_list(Value)} || {Name, Value} <- Attrs],
+        {stop, {ok, {binary_to_list(Password), Attrs1, {Balance, binary_to_list(Code)}}}}
     catch
         _:Reason ->
+            ?ERROR_MSG("Cannot fetch account ~s due to ~p~n", [UserName, Reason]),
             {stop, {error, Reason}}
     end.
 
